@@ -1,7 +1,7 @@
 {
-  "name": "수학 수업 웹툴 모음",
-  "short_name": "수학 웹툴",
-  "description": "교실에서 바로 쓰는 로컬 우선 수학 수업 웹툴",
+  "name": "JB Math 수학 웹툴",
+  "short_name": "JB Math",
+  "description": "JB Math의 수학 수업 · 평가 · 학급운영을 위한 로컬 우선 웹도구",
   "lang": "ko",
   "start_url": "./",
   "scope": "./",
