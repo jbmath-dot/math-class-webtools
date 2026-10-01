@@ -1,4 +1,4 @@
-const MANUAL_GITHUB_REPOSITORY_URL = "https://github.com/mathtjungsw/math-class-webtools";
+const MANUAL_GITHUB_REPOSITORY_URL = "https://github.com/jbmath-dot/math-class-webtools";
 
 const TAG_META = {
   common: { label: "공통", group: "subject" },
