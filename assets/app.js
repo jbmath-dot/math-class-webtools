@@ -1,4 +1,4 @@
-const MANUAL_GITHUB_REPOSITORY_URL = "https://github.com/mathtjungsw/math-class-webtools";
+const MANUAL_GITHUB_REPOSITORY_URL = "https://github.com/jbmath-dot/math-class-webtools";
 
 const TAG_META = {
   common: { label: "공통", group: "subject" },
@@ -57,6 +57,20 @@ const RUNTIME_META = {
 };
 
 const SPECIAL_RUNTIME = {
+  "jb-game-4": ["browser", "internet"],
+  "jb-game-5": ["browser", "internet"],
+  "jb-game-6": ["browser", "internet"],
+  "jb-game-7": ["browser", "internet"],
+  "jb-game-8": ["browser", "internet"],
+  "jb-game-9": ["browser", "internet"],
+  "jb-game-10": ["browser", "internet"],
+  "jb-game-11": ["browser", "internet"],
+  "jb-game-12": ["browser", "internet"],
+  "jb-game-13": ["browser", "internet"],
+  "jb-game-14": ["browser", "internet"],
+  "jb-game-15": ["browser", "internet"],
+  "jb-game-16": ["browser", "internet"],
+
   "betting-game": ["browser", "internet"],
   "monopoly-pricing-game": ["browser", "internet"],
   "motion-shot": ["browser", "offline", "camera"],
@@ -843,6 +857,22 @@ const searchInput = document.querySelector("[data-tool-search]");
 const searchClearButton = document.querySelector("[data-search-clear]");
 const sortSelect = document.querySelector("[data-tool-sort]");
 const statsToggle = document.querySelector("[data-stats-toggle]");
+let projectCategory = "all";
+const projectCategoryButtons = [...document.querySelectorAll("[data-project-category]")];
+function matchesProjectCategory(card) {
+  const tags = getCardTags(card);
+  if (projectCategory === "games") return tags.includes("math-game");
+  if (projectCategory === "lesson") return tags.includes("class-use") && !tags.includes("math-game");
+  if (projectCategory === "tools") return !tags.includes("math-game");
+  return true;
+}
+projectCategoryButtons.forEach(button => button.addEventListener("click", () => {
+  projectCategory = button.dataset.projectCategory;
+  selectedTags.clear(); selectedRuntimes.clear();
+  searchQuery = "";
+  if (searchInput) searchInput.value = "";
+  updateTagFilters(true);
+}));
 const selectedTags = new Set();
 const selectedRuntimes = new Set();
 let searchQuery = "";
@@ -1156,6 +1186,15 @@ function renderSelectedTags() {
 }
 
 function updateTagFilters(updateHash = false) {
+  projectCategoryButtons.forEach(button => button.setAttribute("aria-pressed", String(button.dataset.projectCategory === projectCategory)));
+  const categoryDescriptions = {
+    all: "수업 자료, 웹툴, 게임을 한곳에서 찾아보세요.",
+    lesson: "수학 개념을 탐구하는 수업용 자료입니다. 수업 보관함에서 즐겨찾기를 모아 활용하세요.",
+    tools: "게임을 제외한 수학 탐구·평가·학급운영 웹도구입니다.",
+    games: "내 게임 모음과 다양한 수학게임입니다. 실행 조건을 확인하고 시작하세요."
+  };
+  const categoryDescription = document.querySelector("[data-category-description]");
+  if (categoryDescription) categoryDescription.textContent = categoryDescriptions[projectCategory];
   filterButtons.forEach((button) => {
     const isSelected = selectedTags.has(button.dataset.tagFilter);
     button.classList.toggle("is-active", isSelected);
@@ -1169,7 +1208,7 @@ function updateTagFilters(updateHash = false) {
 
   let visibleCount = 0;
   toolCards.forEach((card) => {
-    const isVisible = matchesSelectedTags(card) && matchesSelectedRuntimes(card) && matchesSearchQuery(card);
+    const isVisible = matchesProjectCategory(card) && matchesSelectedTags(card) && matchesSelectedRuntimes(card) && matchesSearchQuery(card);
     card.classList.toggle("is-hidden", !isVisible);
     card.setAttribute("aria-hidden", String(!isVisible));
     if (isVisible) visibleCount += 1;
@@ -1193,7 +1232,9 @@ function updateTagFilters(updateHash = false) {
   if (hasTopicTag) document.querySelector(".filter-more")?.setAttribute("open", "");
 
   if (updateHash) {
-    const nextHash = selectedTags.size ? `tags=${[...selectedTags].join(",")}` : "tools";
+    const nextHash = projectCategory === "all"
+      ? (selectedTags.size ? `tags=${[...selectedTags].join(",")}` : "tools")
+      : `category=${projectCategory}${selectedTags.size ? `&tags=${[...selectedTags].join(",")}` : ""}`;
     window.history.replaceState({}, "", `#${nextHash}`);
   }
 }
@@ -1278,7 +1319,9 @@ if (statsToggle) {
 }
 
 const initialHash = window.location.hash.slice(1);
-const initialTagValue = initialHash.startsWith("tags=") ? initialHash.slice(5) : initialHash;
+const initialParams = new URLSearchParams(initialHash);
+if (["lesson", "tools", "games"].includes(initialParams.get("category"))) projectCategory = initialParams.get("category");
+const initialTagValue = initialParams.get("tags") || (initialHash.includes("=") ? "" : initialHash);
 initialTagValue.split(",").filter((tag) => TAG_META[tag]).forEach((tag) => selectedTags.add(tag));
 renderCardTags();
 renderRuntimeBadges();
