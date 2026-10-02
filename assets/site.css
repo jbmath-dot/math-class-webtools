@@ -3936,3 +3936,11 @@ body.is-modal-open {
 .detective-people i:nth-child(2) { height: 95px; background: #c44739; }
 .detective-people i:nth-child(3) { height: 77px; background: #d6aa39; }
 .detective-people i:nth-child(4) { height: 89px; background: #3b6f8b; }
+
+.project-tabs {display:flex;gap:8px;max-width:1240px;margin:18px auto 0;padding:0 24px;flex-wrap:wrap}
+.project-tabs button {font:inherit;font-weight:700;padding:12px 24px;border:1px solid #cbd5e1;border-radius:999px;background:#fff;color:#111c35;cursor:pointer}
+.project-tabs button[aria-pressed="true"] {background:#111c35;color:#fff;border-color:#111c35}
+.project-tabs button:focus-visible {outline:3px solid #5dd2b2;outline-offset:3px}
+
+.project-category-description {max-width:1240px;margin:12px auto 0;padding:0 24px;color:var(--muted);font-size:14px;line-height:1.6}
+@media(max-width:600px){.project-tabs{padding:0 16px;gap:6px}.project-tabs button{flex:1;padding:12px 10px}.project-category-description{padding:0 16px}}
