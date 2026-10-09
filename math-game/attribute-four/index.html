@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#183e43">
+  <title>속성 사목 · 콰르토 | JB Math</title>
+  <meta name="description" content="네 가지 속성을 살피는 콰르토 수학 게임. 연습, 난이도별 AI 대결, 한 기기에서 두 사람 대결을 지원합니다.">
+  <link rel="stylesheet" href="style.css">
+  <script src="model.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="topbar"><a class="brand" href="../../index.html#category=games">JB <span>MATH</span></a><nav aria-label="상위 메뉴"><a href="../boardgame-library/index.html">보드게임 목록</a><a href="../../index.html#category=games">게임탭 ↗</a></nav></header>
+  <main>
+    <section class="intro">
+      <div><p class="eyebrow">BOARD GAME LAB / 01</p><h1>속성 사목 <span>콰르토</span></h1><p class="lead">내가 놓을 말은 상대가 고릅니다.<br>다른 말 속에서, 같은 속성 하나를 찾아보세요.</p></div>
+      <div class="intro-note"><span>중학교 공통 · 중2 확장</span><strong>16개의 말, 4가지 속성.</strong><p>분류 · 추론 · 경우의 수</p></div>
+    </section>
+
+    <section id="setup" class="panel setup" aria-labelledby="setup-title">
+      <div class="section-heading"><h2 id="setup-title">어떻게 즐길까요?</h2><button type="button" class="text-button" data-rules>게임 방법 ↗</button></div>
+      <form id="setup-form">
+        <fieldset class="mode-options"><legend class="sr-only">플레이 모드</legend>
+          <label><input type="radio" name="mode" value="practice"><span><b>01 / 연습</b><small>한 수로 완성하는 속성 찾기</small></span></label>
+          <label><input type="radio" name="mode" value="ai" checked><span><b>02 / AI 대결</b><small>나와 컴퓨터의 전략 대결</small></span></label>
+          <label><input type="radio" name="mode" value="local"><span><b>03 / 2인 대결</b><small>한 기기에서 번갈아 조작</small></span></label>
+        </fieldset>
+        <div class="settings-row">
+          <label id="difficulty-field">AI 난이도<select id="difficulty"><option value="easy">쉬움 · 다양한 수를 시도</option><option value="normal" selected>보통 · 바로 이기는 수를 판단</option><option value="hard">어려움 · 여러 수 앞을 탐색</option></select></label>
+          <label id="starter-field">첫 말을 고를 사람<select id="starter"><option value="0">나</option><option value="1">AI</option></select></label>
+          <label id="practice-field" hidden>연습 단계<select id="practice-level"><option value="1">1단계 · 기본 줄 찾기</option><option value="2">2단계 · 여러 말 속에서 찾기</option><option value="3">3단계 · 복잡한 판 읽기</option></select></label>
+          <button type="submit" class="primary start">게임 시작 <span aria-hidden="true">→</span></button>
+        </div>
+        <p id="mode-description" class="muted">AI와 번갈아 말을 고르고 놓습니다. 상대에게 줄 말까지 신중하게 선택하세요.</p>
+      </form>
+    </section>
+
+    <section id="game" hidden aria-label="게임 화면">
+      <div class="game-toolbar"><span id="mode-badge" class="badge"></span><div><button id="undo" type="button">한 단계 되돌리기</button><button id="settings" type="button">모드 바꾸기</button><button type="button" data-rules>방법</button></div></div>
+      <div id="turn-banner" class="turn-banner" role="status" aria-live="polite"><span id="turn-step"></span><div><h2 id="turn-title"></h2><p id="turn-help"></p></div><span id="progress"></span></div>
+      <div class="play-layout">
+        <section class="board-panel panel" aria-label="4 곱하기 4 게임판">
+          <div class="board-caption"><span>속성이 같은 말 4개를 한 줄에</span><span>가로 · 세로 · 대각선</span></div>
+          <div class="board-labels" aria-hidden="true"><span>A</span><span>B</span><span>C</span><span>D</span></div>
+          <div id="board" class="board"></div>
+          <div class="board-actions"><button id="hint" type="button">힌트 보기</button><button id="confirm" class="primary" type="button" disabled>말을 선택하세요</button><button id="next" class="primary" type="button" hidden>다음 연습 →</button><button id="restart" type="button" hidden>같은 설정으로 다시</button></div>
+          <p id="feedback" class="feedback" role="status" aria-live="polite"></p>
+        </section>
+        <aside class="side-panel">
+          <section class="panel held-panel"><div class="section-heading"><h3 id="held-heading">놓을 말</h3><span id="held-number"></span></div><div id="held-piece" class="held-piece"></div><p id="held-description" class="muted"></p></section>
+          <section class="panel pool-panel"><div class="section-heading"><h3>남아 있는 말</h3><span id="pool-count" class="muted"></span></div><div id="pool" class="pool"></div><p class="small muted">말 아래의 번호는 구별용입니다. 승리는 네 가지 속성으로 판단합니다.</p></section>
+        </aside>
+      </div>
+      <details class="panel learning" id="analysis"><summary>수학으로 읽는 게임판 <span>분류 · 경우의 수</span></summary><div id="analysis-content"></div></details>
+    </section>
+
+    <section class="legend panel" aria-labelledby="legend-title"><div><p class="eyebrow">LOOK FOR ONE THING IN COMMON</p><h2 id="legend-title">네 가지 중 하나만 같아도 됩니다.</h2><p class="muted">한 줄의 말 네 개가 모두 밝거나, 모두 네모이거나, 모두 높거나, 모두 뚫려 있다면 완성입니다. 반대 속성도 가능합니다.</p></div><div class="legend-grid"><div><b>◐ 색</b><span>밝음 / 어두움</span></div><div><b>● ■ 모양</b><span>둥금 / 네모</span></div><div><b>▂ ▆ 높이</b><span>낮음 / 높음</span></div><div><b>● ○ 윗면</b><span>막힘 / 뚫림</span></div></div></section>
+    <section class="curriculum-note"><h2>교실에서 이어가기</h2><p><b>공통:</b> 분류 기준을 정하고, 상대의 선택을 예상하며, 전략의 이유를 설명합니다. <b>중2 확장:</b> 2 × 2 × 2 × 2 = 16으로 말의 종류를 세고, 조건에 맞는 말을 빠짐없이 세어 봅니다. 경우의 수 [9수04-05]와 연결한 교사 설계 활동입니다.</p><p>교육과정은 중학교 1~3학년군 기준이며 학년은 권장 배치입니다. 중학교의 집합·명제 단원으로 분류하지 않습니다.</p></section>
+  </main>
+  <footer>콰르토(Quarto)의 기본 규칙을 참고한 비공식 수업용 구현 · 원작 Blaise Muller / Gigamic<br>그래픽·설명·코드: JB Math · <a href="https://en.gigamic.com/modern-classics/1049-quarto-3421271300410.html" target="_blank" rel="noopener noreferrer">원작 정보 ↗</a> · 승리 자동 판정, 2×2 사각형 규칙 제외</footer>
+  <dialog id="rules"><div class="dialog-content"><div class="section-heading"><h2>상대의 말을 골라 주세요.</h2><button id="close-rules" type="button" aria-label="게임 방법 닫기">닫기 ×</button></div><ol><li><b>건네기:</b> 남은 말 중 하나를 골라 상대에게 줍니다.</li><li><b>놓기:</b> 상대는 받은 말을 빈칸 하나에 놓습니다.</li><li><b>다시 건네기:</b> 방금 놓은 사람이 다음 말을 골라 상대에게 줍니다.</li><li><b>승리:</b> 가로·세로·대각선에 공통 속성을 가진 말 네 개를 완성한 사람이 이깁니다. 판이 가득 차도 완성된 줄이 없으면 무승부입니다.</li></ol><p>말이나 칸을 누른 뒤 확인 버튼을 눌러 선택을 확정합니다. 2인 대결은 모든 정보가 공개된 상태에서 같은 화면을 번갈아 조작합니다.</p><p><b>연습:</b> 받은 말로 바로 완성할 수 있는 칸을 찾습니다. 정답이 여러 개일 수 있으며, 틀리면 다시 시도할 수 있습니다.</p><p><b>수업용 규칙:</b> 원작의 승리 선언 절차 대신 완성 즉시 자동으로 판정합니다. 고급 2×2 사각형 규칙은 사용하지 않습니다. 힌트와 되돌리기는 학습을 위해 대결 모드에서도 제공합니다.</p><p class="muted">AI의 어려움은 제한된 시간 동안 여러 수를 탐색합니다. 필승 또는 완벽한 플레이를 보장하는 난이도는 아닙니다.</p></div></dialog>
+  <noscript><p class="panel">이 게임은 브라우저의 JavaScript를 켜야 실행할 수 있습니다.</p></noscript>
+</body>
+</html>
