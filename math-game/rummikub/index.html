@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#183e43"><meta name="description" content="타일의 색과 수를 분류하고 테이블을 재구성하는 루미큐브. 연습 3단계, AI 3단계, 손패를 가리는 같은 기기 2인 대결을 제공합니다.">
+  <title>루미큐브 · 수를 다시 엮다 | JB Math</title>
+  <link rel="stylesheet" href="../boardgame-kit/style.css?v=20261012-1">
+  <link rel="stylesheet" href="style.css?v=20261012-rk1">
+  <script src="model.js?v=20261012-rk1" defer></script><script src="app.js?v=20261012-rk1" defer></script>
+</head>
+<body>
+  <header><a class="brand" href="../../index.html#category=games">JB <span>MATH</span></a><nav aria-label="상위 메뉴"><a href="../boardgame-library/index.html">보드게임 목록</a><a href="../../index.html#category=games">게임 탭 ↗</a></nav></header>
+  <main>
+    <section class="intro">
+      <div><p class="eyebrow">BOARD GAME LAB / NUMBER PATTERNS</p><h1>루미큐브<br><span class="subtitle">수를 다시 엮다</span></h1><p class="lead">같은 수를 모으고, 이어지는 수를 연결하고.<br>이미 놓인 타일에서도 새로운 조합을 찾아보세요.</p></div>
+      <div class="tile-note" aria-label="같은 색의 3, 4, 5는 연속 줄입니다"><span>RETHINK THE PATTERN</span><div class="mini-tiles" aria-hidden="true"><i>3<small>●</small></i><i>4<small>●</small></i><i>5<small>●</small></i></div><p>같은 타일, 새로운 가능성.</p></div>
+    </section>
+    <section id="setup" class="panel">
+      <h2>어떻게 조합해 볼까요?</h2>
+      <form id="setup-form">
+        <fieldset class="modes"><legend class="sr-only">게임 모드</legend>
+          <label><input type="radio" name="mode" value="practice"><span><b>01 / 연습</b><small>묶음 → 30점 → 재배열</small></span></label>
+          <label><input type="radio" name="mode" value="ai" checked><span><b>02 / AI 대결</b><small>세 단계의 조합 탐색</small></span></label>
+          <label><input type="radio" name="mode" value="local"><span><b>03 / 2인 대결</b><small>같은 기기 · 손패 가리기</small></span></label>
+        </fieldset>
+        <div class="settings">
+          <label id="difficulty-field">AI 난이도<select id="difficulty"><option value="easy">쉬움 · 짧은 탐색</option><option value="normal" selected>보통 · 새 묶음과 덧붙이기</option><option value="hard">어려움 · 일부 테이블 재구성</option></select></label>
+          <label id="level-field" hidden>연습 단계<select id="level"><option value="1">1단계 · 묶음 만들기</option><option value="2">2단계 · 첫 등록 30점</option><option value="3">3단계 · 재배열과 조커</option></select></label>
+          <label id="first-field">먼저 시작<select id="first"><option value="0">나</option><option value="1">AI</option></select></label>
+          <button class="primary" type="submit">타일 펼치기 →</button>
+        </div>
+        <p id="mode-note" class="muted">106개 타일 · 각자 14개 · 첫 등록 30점. AI는 자기 손패와 공개된 테이블만 봅니다.</p>
+      </form>
+      <p class="classroom-note"><b>수업용 한 판</b> 시간제한과 시간 초과 벌점은 없습니다. 풀이 비면 두 사람의 연속 패스로 종료합니다.</p>
+    </section>
+    <section id="game" hidden aria-label="게임 화면">
+      <div class="toolbar"><span id="badge"></span><div><button id="hide-rack" type="button" hidden>손패 가리기</button><button id="settings" type="button">모드 바꾸기</button><button id="restart" type="button">새 게임</button></div></div>
+      <div class="turn" role="status" aria-live="polite"><span id="turn-label"></span><h2 id="turn-title"></h2><button id="retry-ai" type="button" hidden>AI 다시 시도</button></div>
+      <section id="handoff" class="panel privacy" hidden aria-labelledby="handoff-title"><span aria-hidden="true">▣</span><h2 id="handoff-title"></h2><p>상대가 화면을 보지 않도록 기기를 건네세요.<br>본인이 받은 뒤에만 손패를 열어 주세요.</p><button id="reveal-rack" class="primary" type="button">기기를 받았습니다 · 내 손패 보기</button></section>
+      <section id="result" class="panel" hidden aria-label="게임 결과"></section>
+      <section class="panel table-panel" aria-labelledby="table-title">
+        <div id="score-strip" class="score-strip"></div>
+        <div class="section-heading"><h2 id="table-title">공개 테이블</h2><span id="table-note" class="muted"></span></div>
+        <div id="table" class="meld-grid"></div>
+        <div id="loose-panel" class="loose-panel" hidden><h3>테이블에서 빼놓은 타일</h3><p class="muted">차례를 끝내기 전에 모두 올바른 묶음에 넣어 주세요.</p><div id="loose" class="tile-tray"></div></div>
+      </section>
+      <section id="editor" class="panel" aria-labelledby="rack-title">
+        <div class="section-heading"><h2 id="rack-title">내 손패</h2><label class="sort-label">정렬<select id="sort"><option value="color">색 → 수</option><option value="value">수 → 색</option></select></label></div>
+        <p id="rack-note" class="muted"></p><div id="rack" class="tile-tray rack"></div>
+        <div class="selection-bar"><span id="selection-count" role="status" aria-live="polite"></span><button id="clear-selection" type="button">선택 해제</button></div>
+        <div class="actions composition"><button id="new-run" type="button">연속 줄 만들기</button><button id="new-group" type="button">같은 수 묶기</button><button id="take-out" type="button">선택 타일 빼놓기</button></div>
+        <p class="muted how-to">① 타일을 눌러 선택 → ② 새 묶음을 만들거나 테이블의 ‘여기에 넣기’ → ③ 차례 확정. 테이블 타일도 선택해 옮길 수 있습니다.</p>
+        <div id="draft-status" class="draft-status" role="status" aria-live="polite"></div>
+        <div class="actions finish-actions"><button id="commit" type="button" class="primary">차례 확정</button><button id="reset-draft" type="button">이번 편집 되돌리기</button><button id="draw" type="button">1개 뽑고 차례 종료</button><button id="next-practice" type="button" class="primary" hidden>다음 연습 →</button></div>
+      </section>
+      <section id="help-panel" class="panel tools"><button id="hint" type="button">힌트 보기</button><button id="hint-layout" type="button" hidden>힌트 배치를 편집판에 놓기</button><p id="feedback" role="status" aria-live="polite"></p></section>
+      <details id="log-panel" class="panel"><summary>공개된 진행 기록</summary><ol id="log" class="log"></ol></details>
+    </section>
+    <details class="panel rules"><summary>처음이라면 · 게임 방법과 수업용 규칙</summary>
+      <ol>
+        <li>네 가지 색의 1~13 타일이 두 벌씩, 조커가 2개 있습니다. 각자 14개를 받고 나머지 78개를 풀에 둡니다. 손패를 먼저 비우면 승리합니다.</li>
+        <li><b>같은 수 묶음:</b> 숫자가 같고 색이 다른 타일 3~4개. <b>연속 줄:</b> 같은 색으로 수가 연속되는 타일 3개 이상. 13 뒤에 1을 이을 수는 없습니다. 색마다 다른 기호도 표시했습니다.</li>
+        <li><b>첫 등록:</b> 자기 손패만으로 만든 묶음들의 숫자 합이 30점 이상이어야 합니다. 조커는 대신하는 수로 계산합니다. 기존 테이블은 첫 등록을 마친 <b>다음 내 차례부터</b> 이용할 수 있습니다.</li>
+        <li><b>그다음 차례:</b> 새 묶음을 놓거나 테이블에 덧붙이고, 테이블을 나누어 재배열할 수 있습니다. 마지막에는 모든 묶음이 규칙을 만족해야 하며, 테이블 타일을 손패로 가져갈 수는 없습니다. 매번 내 타일을 적어도 한 개 사용해야 합니다.</li>
+        <li><b>조커:</b> 필요한 색과 수를 대신합니다. 테이블을 유효하게 재구성하며 회수할 수 있지만, 회수한 조커도 같은 차례에 새 조합으로 써야 합니다. 다른 기존 묶음에 조커만 덧붙이는 회수는 허용하지 않습니다. 표시된 작은 숫자와 색이 현재 대신하는 타일입니다. 여러 배치가 가능하면 연속 줄의 시작 수가 가장 큰 배치를 사용합니다.</li>
+        <li>내지 못하거나 내고 싶지 않으면 풀에서 한 개를 뽑고 차례를 마칩니다. 방금 뽑은 타일은 다음 내 차례부터 씁니다. 편집 중에 뽑으면 이번 편집은 취소됩니다.</li>
+      </ol>
+      <p><b>점수:</b> 누군가 손패를 비우면 상대의 남은 수 합이 승자의 양수 점수, 상대의 음수 점수가 됩니다. 손패의 조커는 30점입니다. 풀이 빈 뒤 연속 두 번 패스하면 남은 합이 작은 사람이 이기고 두 합의 차이를 득실 점수로 기록합니다. 같으면 무승부입니다.</p>
+      <p><b>수업용 조정:</b> 한 판으로 끝내며 선공을 직접 고릅니다. 원작의 차례 제한시간과 시간 초과 벌점은 적용하지 않습니다. 풀 소진 뒤 두 번 연속 패스하면 가능한 재배열이 남아 있어도 종료합니다. 연습, 힌트, 편집 되돌리기를 추가했습니다.</p>
+      <p><b>AI와 손패:</b> 쉬움은 짧게 탐색하고, 보통은 새 묶음과 덧붙이기를 비교합니다. 어려움은 테이블 일부의 한두 묶음도 재구성합니다. 모든 수를 탐색하는 최적 AI는 아니며 가능한 조합을 놓칠 수 있습니다. 상대 손패와 풀의 순서는 보지 않습니다. 2인 대결은 매 차례와 화면 이탈 시 손패를 가립니다. 확정·뽑기 후에는 이전 차례로 돌아갈 수 없습니다.</p>
+    </details>
+    <section class="teaching"><h2>조합을 바꾸어도 유지되는 조건은?</h2><p>타일을 ‘색’과 ‘수’로 분류해 보세요. 네 개짜리 묶음에서 하나를 옮겨도 어떤 조건이 남아야 할까요? 첫 등록의 합과 테이블 전체의 타일 수를 확인하며 분류, 수의 순서, 조건을 만족하는 재구성을 연습할 수 있습니다. 양의 정수 타일 활동이 음수·유리수 전체를 다루지는 않습니다.</p></section>
+  </main>
+  <footer>Rummikub®는 M&amp;M Ventures (2014) Limited의 등록상표입니다. 공식 기본판 규칙을 참고한 비공식 수업용 구현 · 코드·타일 그래픽·설명: JB Math<br><a href="https://rummikub.com/rules/" target="_blank" rel="noopener noreferrer">원작 규칙 안내 ↗</a> · <a href="https://rummikub.com/wp-content/uploads/2019/12/2600-English.pdf" target="_blank" rel="noopener noreferrer">공식 기본판 규칙 ↗</a></footer>
+  <noscript><p class="panel">게임을 실행하려면 브라우저의 JavaScript를 켜 주세요.</p></noscript>
+</body></html>
