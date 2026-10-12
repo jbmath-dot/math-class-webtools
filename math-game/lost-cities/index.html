@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#183e43"><meta name="description" content="탐험 비용과 투자 배수를 계산하는 로스트 시티. 연습 3단계, AI 난이도, 손패를 가리는 같은 기기 2인 대결을 제공합니다.">
+  <title>로스트 시티 · 탐험의 계산 | JB Math</title>
+  <link rel="stylesheet" href="../boardgame-kit/style.css?v=20261012-1">
+  <link rel="stylesheet" href="style.css?v=20261012-lc1">
+  <script src="model.js?v=20261012-lc1" defer></script><script src="app.js?v=20261012-lc1" defer></script>
+</head>
+<body>
+  <header><a class="brand" href="../../index.html#category=games">JB <span>MATH</span></a><nav aria-label="상위 메뉴"><a href="../boardgame-library/index.html">보드게임 목록</a><a href="../../index.html#category=games">게임 탭 ↗</a></nav></header>
+  <main>
+    <section class="intro"><div><p class="eyebrow">BOARD GAME LAB / EXPEDITION 03</p><h1>로스트 시티<br><span class="subtitle">탐험의 계산</span></h1><p class="lead">출발에는 비용이, 투자에는 위험이.<br>여덟 장의 카드로 탐험의 길을 만들어 보세요.</p></div><div class="expedition-note" aria-label="탐험 점수 공식"><span>ONE EXPEDITION</span><strong>(합 − 20) × 배수</strong><p>8장 이상이면 보너스 +20</p><div class="mini-route" aria-hidden="true"><i>×2</i><i>2</i><i>5</i><i>8</i><i>10</i></div></div></section>
+    <section id="setup" class="panel"><h2>어떤 탐험을 떠날까요?</h2><form id="setup-form">
+      <fieldset class="modes"><legend class="sr-only">게임 모드</legend>
+        <label><input type="radio" name="mode" value="practice"><span><b>01 / 연습</b><small>비용·투자·보너스 계산</small></span></label>
+        <label><input type="radio" name="mode" value="ai" checked><span><b>02 / AI 대결</b><small>난이도에 맞춰 전략 탐구</small></span></label>
+        <label><input type="radio" name="mode" value="local"><span><b>03 / 2인 대결</b><small>기기를 건네며 손패 가리기</small></span></label>
+      </fieldset>
+      <div class="settings">
+        <label id="difficulty-field">AI 난이도<select id="difficulty"><option value="easy">쉬움 · 다양한 선택</option><option value="normal" selected>보통 · 손패의 연결 고려</option><option value="hard">어려움 · 상대 공개 카드도 고려</option></select></label>
+        <label id="level-field" hidden>연습 단계<select id="level"><option value="1">1단계 · 탐험 비용</option><option value="2">2단계 · 투자 배수</option><option value="3">3단계 · 8장 보너스</option></select></label>
+        <label id="rounds-field">대결 길이<select id="rounds"><option value="1">빠른 한 판 · 수업용</option><option value="3">3라운드 합산</option></select></label>
+        <label id="first-field">먼저 시작<select id="first"><option value="0">플레이어 1 (나)</option><option value="1">플레이어 2 (AI)</option></select></label>
+        <button type="submit" class="primary">탐험 시작 →</button>
+      </div><p id="mode-note" class="muted">5개 탐험로의 기본판입니다. AI는 자기 손패와 공개된 정보만 사용합니다.</p>
+    </form></section>
+    <section id="game" hidden aria-label="게임 화면">
+      <div class="toolbar"><span id="badge"></span><div><button id="undo" type="button">놓기 되돌리기</button><button id="hide-hand" type="button" hidden>손패 가리기</button><button id="settings" type="button">모드 바꾸기</button><button id="restart" type="button">새 게임</button></div></div>
+      <div class="turn" role="status" aria-live="polite"><span id="turn-label"></span><h2 id="turn-title"></h2></div>
+      <section id="handoff" class="panel privacy" hidden aria-labelledby="handoff-title"><span class="privacy-icon" aria-hidden="true">▣</span><h2 id="handoff-title"></h2><p>상대가 화면을 보지 않도록 기기를 건네세요.<br>본인이 기기를 받았을 때만 아래 버튼을 누릅니다.</p><button id="reveal-hand" class="primary" type="button">기기를 받았습니다 · 내 손패 보기</button></section>
+      <div id="round-result" class="panel" hidden></div>
+      <div id="public-board"></div>
+      <section id="hand-panel" class="panel" aria-labelledby="hand-title"><div class="hand-heading"><h2 id="hand-title">내 손패</h2><span id="hand-count" class="muted"></span></div><p id="hand-note" class="muted"></p><div id="hand" class="hand-grid"></div><div class="actions"><button id="play-card" class="primary" type="button">선택한 카드 놓기</button><button id="discard-card" type="button">선택한 카드 버리기</button></div><p id="selection-note" class="muted"></p></section>
+      <section id="practice-panel" class="panel" hidden aria-labelledby="practice-title"><div class="hand-heading"><h2 id="practice-title">이 탐험의 점수는?</h2><span id="practice-count" class="muted"></span></div><div id="practice-cards" class="hand-grid"></div><form id="answer-form" class="answer-row"><label for="answer">탐험 점수<input id="answer" type="text" inputmode="numeric" autocomplete="off" placeholder="음수도 입력할 수 있어요" required></label><button class="primary" type="submit">정답 확인</button><button id="next-practice" type="button" hidden>다음 연습 →</button></form></section>
+      <section class="panel tools"><button id="hint" type="button">힌트 보기</button><p id="feedback" role="status" aria-live="polite"></p></section>
+      <details id="log-panel" class="panel"><summary>공개된 탐험 기록</summary><ol id="log" class="log"></ol></details>
+    </section>
+    <details class="panel rules"><summary>처음이라면 · 게임 방법과 점수 계산</summary>
+      <ol><li>다섯 탐험로마다 숫자 2~10 카드와 투자 카드 3장이 있습니다. 두 사람은 8장씩 받고, 나머지 44장이 덱이 됩니다.</li><li>내 차례에는 손패 한 장을 내 탐험로에 놓거나 같은 탐험로의 버림 더미에 놓습니다. 숫자는 이미 놓은 숫자보다 커야 합니다. 투자 카드는 숫자를 놓기 전에만 놓을 수 있습니다.</li><li>그 뒤 덱 또는 버림 더미의 맨 위에서 한 장을 가져옵니다. 방금 버린 카드는 바로 가져올 수 없습니다. 카드를 뽑으면 상대 차례입니다.</li><li>덱의 마지막 카드를 뽑는 즉시 라운드가 끝납니다. 손패는 점수에 넣지 않습니다.</li></ol>
+      <p><b>점수:</b> 시작한 탐험로마다 (숫자 합 − 20) × (투자 카드 수 + 1). 투자 카드만 놓아도 비용을 냅니다. 투자 카드를 포함해 8장 이상 놓았다면 마지막에 보너스 20점을 더합니다. 보너스에는 배수를 곱하지 않습니다. 시작하지 않은 탐험로는 0점입니다.</p>
+      <p><b>대결:</b> 빠른 한 판 또는 3라운드 합산을 선택합니다. 다음 라운드에는 현재 합산 점수가 높은 사람이 먼저 시작합니다. 동점이면 직전 라운드의 마지막 행동을 한 사람의 상대가 시작합니다. 최종 점수가 같으면 무승부입니다.</p>
+      <p><b>이 화면의 구성:</b> 5개 탐험로 기본 규칙을 사용합니다. 6번째 탐험로는 포함하지 않았습니다. 첫 플레이어 선택, 빠른 한 판, 연습, 힌트는 수업용으로 추가했습니다. 원작 그림을 사용하지 않고 탐험 기호와 카드를 새로 만들었습니다.</p>
+      <p><b>손패 보호:</b> 2인 대결은 매 차례 기기 전달 화면을 거칩니다. 화면을 벗어나면 손패를 다시 가립니다. 되돌리기는 새 카드를 뽑기 전의 놓기·버리기에만 가능합니다. AI의 어려움은 공개된 상대 탐험로도 비교하는 전략이며 최적 플레이를 보장하지 않습니다.</p>
+    </details>
+    <section class="teaching"><h2>탐험을 식으로 설명해 보세요.</h2><p>숫자 합을 x, 투자 카드 수를 k라고 하면 기본 점수는 (x − 20)(k + 1)입니다. 손해가 나는 탐험에 투자하면 무슨 일이 생길까요? 중1 정수·문자식, 중2 부등식으로 손익분기점을 비교하는 활동에 연결할 수 있습니다.</p></section>
+  </main>
+  <footer>Lost Cities / Reiner Knizia · KOSMOS의 카드 게임 규칙을 참고한 비공식 수업용 구현 · 코드·그래픽·설명: JB Math<br><a href="https://www.thamesandkosmos.co.uk/product/lost-cities-card-game/" target="_blank" rel="noopener noreferrer">원작 정보 ↗</a> · <a href="https://www.thamesandkosmos.com/manuals/full/691821_LC_Card_Game.pdf" target="_blank" rel="noopener noreferrer">공식 규칙 ↗</a></footer>
+  <noscript><p class="panel">게임을 실행하려면 브라우저의 JavaScript를 켜 주세요.</p></noscript>
+</body></html>
