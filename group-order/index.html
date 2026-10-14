@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#184c6b">
+<title>함께 주문 | 메뉴판 사진으로 단체주문</title>
+<style>
+:root{font-family:system-ui,-apple-system,"Noto Sans KR",sans-serif;color:#193145;background:#f5f8fa}*{box-sizing:border-box}body{margin:0}header{background:#184c6b;color:#fff;padding:17px 15px}header strong{font-size:1.22rem}header small{display:block;color:#dfedf5;margin-top:4px}.wrap{max-width:1000px;margin:auto;padding:13px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:13px}.card{background:#fff;border:1px solid #dbe5eb;border-radius:14px;padding:16px;margin:0 0 13px;box-shadow:0 3px 12px #18394a08}h2{font-size:1.07rem;margin:0 0 13px}h3{font-size:.98rem;margin:14px 0 8px}p{line-height:1.55}small,.muted{color:#687782}label{display:block;font-size:.88rem;font-weight:650;margin:10px 0 5px}input,select,textarea,button{font:inherit}input,select,textarea{padding:11px;border:1px solid #b9cbd4;border-radius:8px;width:100%;background:#fff;color:#20384b}textarea{min-height:100px}button{border:0;background:#185f84;color:#fff;border-radius:9px;padding:11px 13px;cursor:pointer;font-weight:650}button:disabled{opacity:.45;cursor:not-allowed}button.subtle{background:#e9f2f7;color:#184c6b}button.danger{background:#9c3241}button.tiny{padding:6px 10px;font-size:.84rem}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.row>*{min-width:0}.row input,.row select{flex:1}#status{min-height:1.5em;font-size:.9rem;color:#a14720}.hide,[hidden]{display:none!important}.summary{font-size:1.4rem;font-weight:800;color:#185f84}.pill{display:inline-block;padding:4px 9px;border-radius:99px;background:#ebf3f7;font-size:.78rem;color:#236183}.item{padding:11px 0;border-top:1px solid #e9eff2}.item:first-child{border-top:none}.between{display:flex;justify-content:space-between;align-items:center;gap:9px}.right{text-align:right}#qr canvas,#qr img{max-width:165px;margin:8px auto;display:block}.warn{background:#fff7e7;padding:11px;border-radius:8px}.note{font-size:.83rem;color:#526977}#welcome{max-width:650px;margin:20px auto}@media(max-width:730px){.grid{grid-template-columns:1fr}.wrap{padding:9px}.card{padding:14px}.row{align-items:stretch}.row input,.row select{min-width:100%}}@media print{button,#hostTools,#shareBox,#welcome,#newOrder{display:none!important}}
+</style>
+</head>
+<body>
+<header><div style="max-width:1000px;margin:auto"><strong>함께 주문</strong><small>선생님 모두가 실시간으로 확인하는 단체주문</small></div></header>
+<div class="wrap">
+<div id="status" role="status" aria-live="polite"></div>
+<section id="welcome" class="card">
+<h2>새 주문방 만들기</h2><p>메뉴판 사진을 올리거나 메뉴를 직접 입력하고, 링크를 공유해 각자 스마트폰에서 주문하세요. 이름·메뉴별 합계는 모든 참여자가 함께 봅니다.</p>
+<p class="warn"><b>실시간 공유에는 Firebase 연결이 필요합니다.</b> 아래에 Firebase 웹 앱 설정(JSON)을 붙여 넣으세요. 데이터베이스 규칙 등은 <a href="./SETUP.md">설정 안내</a>를 참고하세요. 설정 전에는 다른 휴대전화와 주문이 동기화되지 않습니다.</p>
+<label for="config">Firebase 웹 앱 설정 JSON</label>
+<textarea id="config" spellcheck="false" placeholder='{"apiKey":"...","authDomain":"...","databaseURL":"https://...","projectId":"...","appId":"..."}'></textarea>
+<button id="makeRoom">새 주문방 만들기</button>
+</section>
+<section id="app" hidden>
+<div class="card" id="shareBox"><div class="between"><h2>주문방 <span id="roomName"></span></h2><span id="roomState" class="pill"></span></div>
+<div class="row"><button id="share">참여 링크 공유</button><button id="copy" class="subtle">링크 복사</button><span id="participantCount" class="muted"></span></div>
+<div id="qr"></div><small>링크 또는 QR을 선생님들께 보내세요. 설치나 회원가입 없이 이름을 입력하고 주문할 수 있습니다.</small></div>
+<div class="grid">
+<div>
+<section class="card" id="hostTools" hidden>
+<h2>방장: 메뉴판 관리</h2><p class="note">사진에서 메뉴·가격을 추출한 뒤 잘못 인식된 내용은 고칠 수 있습니다. 메뉴 이름이나 가격을 바꾸면 기존 주문의 합계에도 반영됩니다.</p>
+<label for="photo">메뉴판 사진</label><input id="photo" type="file" accept="image/*" capture="environment">
+<button id="scan" class="subtle" style="margin-top:8px">사진에서 메뉴 읽기</button>
+<label for="ocrLines">인식 결과 / 직접 입력 (한 줄에 메뉴명 | 가격)</label>
+<textarea id="ocrLines" placeholder="아메리카노 | 4500&#10;카페라떼 | 5000"></textarea>
+<button id="importMenu" class="subtle">위 메뉴를 추가하기</button>
+<hr style="border:0;border-top:1px solid #e9eff2;margin:17px 0">
+<h3 id="editorTitle">메뉴 추가하기</h3>
+<label for="mName">메뉴명</label><input id="mName" placeholder="메뉴 이름">
+<label for="mPrice">가격(원)</label><input id="mPrice" type="number" min="0" step="1" placeholder="4500">
+<div class="row" style="margin-top:10px"><button id="saveMenu">메뉴 저장</button><button id="cancelMenu" class="subtle" hidden>수정 취소</button></div>
+<h3>등록된 메뉴</h3><div id="editableMenu"></div>
+<hr style="border:0;border-top:1px solid #e9eff2;margin:16px 0">
+<h3>주문방 관리</h3><button id="toggleClosed" class="subtle">주문 마감</button>
+</section>
+<section class="card">
+<h2>내 주문</h2><label for="nick">이름 또는 닉네임</label><div class="row"><input id="nick" maxlength="30" placeholder="예: 김선생 / 햇살"><button id="saveNick" class="subtle">이름 저장</button></div>
+<div id="newOrder">
+<h3>메뉴 선택</h3>
+<label for="menuSelect">메뉴</label><select id="menuSelect"><option value="">메뉴가 등록되면 표시됩니다</option></select>
+<div class="row"><div style="flex:1"><label for="qty">수량</label><input id="qty" type="number" min="1" max="99" value="1"></div><div style="flex:2"><label for="option">옵션 (선택)</label><input id="option" maxlength="70" placeholder="아이스, 샷 추가 등"></div></div>
+<button id="addOrder" style="margin-top:12px">내 주문에 추가</button>
+</div>
+<div id="myItems"></div>
+</section>
+</div>
+<div>
+<section class="card"><h2>모두의 주문 · 실시간</h2><div class="row"><span id="totalPeople" class="pill"></span><span id="totalItems" class="pill"></span></div><p class="summary" id="grandTotal">0원</p><h3>메뉴별 합계</h3><div id="byMenu"></div><h3>주문자별 내역</h3><div id="byPerson"></div></section>
+<section class="card"><h2>사용 안내</h2><p class="note">메뉴와 가격은 방장만 수정합니다. 참여자는 자신의 주문을 수정·삭제할 수 있습니다. 모든 주문은 참여자들에게 실시간 공개됩니다. 실제 매장 결제와 연동되는 서비스가 아닙니다.</p><p class="note">가격에 없는 추가 옵션은 직접 적을 수 있으나 추가 금액은 자동 계산되지 않습니다. 방을 마감하면 주문 수정이 중지됩니다.</p></section>
+</div>
+</div>
+</section>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import {getAuth,signInAnonymously} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import {getDatabase,ref,set,get,onValue,runTransaction} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
+const $ = id => document.getElementById(id);
+const money = n => (Number(n)||0).toLocaleString("ko-KR")+"원";
+const esc = v => String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const uidStr = () => Array.from(crypto.getRandomValues(new Uint8Array(9)),v=>v.toString(36).padStart(2,"0")).join("");
+const encode = obj => btoa(unescape(encodeURIComponent(JSON.stringify(obj)))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+const decode = s => JSON.parse(decodeURIComponent(escape(atob(s.replace(/-/g,"+").replace(/_/g,"/")))));
+let db,auth,uid,room="",config,current=null,editing="",joined=false;
+const url=new URL(location.href);
+function say(s){$("status").textContent=s;setTimeout(()=>{if($("status").textContent===s)$("status").textContent=""},8500)}
+function path(s=""){return "rooms/"+room+(s?"/"+s:"")}
+function isHost(){return current?.hostUid===uid}
+function my(){return current?.orders?.[uid]||{nick:"",items:[]}}
+function itemInfo(x){const found=(current?.menu||[]).find(m=>m.id===x.menuId);return {name:found?.name||x.name||"삭제된 메뉴",price:Number(found?.price??x.price??0),qty:Number(x.qty||1),option:x.option||""}}
+function link(){let u=new URL(location.href);u.search="?r="+encodeURIComponent(room)+"&cfg="+encodeURIComponent(encode(config));u.hash="";return u.href}
+async function connect(c,r,create=false){
+ if(!c?.apiKey||!c?.projectId||!c?.databaseURL||!c?.appId)throw Error("Firebase 설정의 apiKey, projectId, databaseURL, appId가 필요합니다.");
+ config=c;room=r;const firebase=initializeApp(c);auth=getAuth(firebase);db=getDatabase(firebase);
+ const cred=await signInAnonymously(auth);uid=cred.user.uid;
+ if(create){const initial={hostUid:uid,closed:false,menu:[],createdAt:Date.now()};
+ const x=await runTransaction(ref(db,path()),v=>v??initial,{applyLocally:false});
+ if(!x.committed||x.snapshot.val()?.hostUid!==uid)throw Error("주문방을 만들지 못했습니다. 새로 시도하세요.");
+ }else{const s=await get(ref(db,path()));if(!s.exists())throw Error("주문방을 찾을 수 없습니다. 링크를 확인하세요.");}
+ $("welcome").hidden=true;$("app").hidden=false;$("roomName").textContent=room.slice(0,8);
+ const full=link();const qr=$("qr");if(window.QRCode){qr.textContent="";new QRCode(qr,{text:full,width:154,height:154,correctLevel:QRCode.CorrectLevel.L});}
+ onValue(ref(db,path()),s=>{current=s.val();if(current){render();joined=true}else say("주문방이 삭제되었거나 접근할 수 없습니다.")},e=>say("실시간 연결 오류: "+e.message));
+}
+function render(){
+ const host=isHost(),closed=!!current.closed;
+ $("hostTools").hidden=!host;$("roomState").textContent=closed?"주문 마감":"주문 접수 중";
+ $("toggleClosed").textContent=closed?"주문 다시 열기":"주문 마감";
+ $("newOrder").hidden=closed;
+ $("nick").disabled=closed;$("saveNick").disabled=closed;
+ if(document.activeElement!==$("nick"))$("nick").value=my().nick||$("nick").value;
+ const selected=$("menuSelect").value;
+ $("menuSelect").innerHTML='<option value="">메뉴를 골라주세요</option>'+(current.menu||[]).map(m=>'<option value="'+esc(m.id)+'">'+esc(m.name)+' · '+money(m.price)+'</option>').join("");
+ if((current.menu||[]).some(x=>x.id===selected))$("menuSelect").value=selected;
+ const orders=Object.entries(current.orders||{}).filter(([_,o])=>Array.isArray(o.items)&&o.items.length);
+ $("participantCount").textContent=orders.length+"명 주문 참여";
+ $("totalPeople").textContent=orders.length+"명";
+ const totalQty=orders.reduce((n,[_,o])=>n+o.items.reduce((sum,i)=>sum+(Number(i.qty)||0),0),0);
+ $("totalItems").textContent=totalQty+"개";
+ let total=0, groups=new Map();
+ for(const [person,o] of orders)for(const x of o.items){
+ const d=itemInfo(x);total+=d.price*d.qty;
+ const k=d.name+"§"+d.option;let v=groups.get(k)||{...d,qty:0};v.qty+=d.qty;groups.set(k,v);
+ }
+ $("grandTotal").textContent=money(total);
+ $("byMenu").innerHTML=groups.size?[...groups.values()].map(g=>'<div class="item between"><span>'+esc(g.name)+(g.option?'<small> · '+esc(g.option)+'</small>':"")+' <b>×'+g.qty+'</b></span><b>'+money(g.qty*g.price)+'</b></div>').join(""):'<p class="muted">아직 주문이 없습니다.</p>';
+ $("byPerson").innerHTML=orders.length?orders.map(([person,o])=>{
+ const sum=o.items.reduce((v,x)=>{const d=itemInfo(x);return v+d.price*d.qty},0);
+ return '<div class="item"><div class="between"><strong>'+esc(o.nick||"이름 없음")+'</strong><strong>'+money(sum)+'</strong></div>'+o.items.map(x=>{const d=itemInfo(x);return '<div class="note">'+esc(d.name)+(d.option?" ("+esc(d.option)+")":"")+' ×'+d.qty+' · '+money(d.price*d.qty)+'</div>'}).join("")+'</div>';
+ }).join(""):'<p class="muted">주문이 들어오면 실시간으로 표시됩니다.</p>';
+ $("myItems").innerHTML=(my().items||[]).map((x,i)=>{const d=itemInfo(x);return '<div class="item"><div class="between"><div><b>'+esc(d.name)+'</b><br><small>'+esc(d.option||"기본")+' · '+money(d.price)+' × '+d.qty+'</small></div><div class="row"><button class="tiny subtle" data-action="decrement" data-index="'+i+'" '+(closed?"disabled":"")+'>−</button><span>'+d.qty+'</span><button class="tiny subtle" data-action="increment" data-index="'+i+'" '+(closed?"disabled":"")+'>+</button><button class="tiny danger" data-action="deleteOrder" data-index="'+i+'" '+(closed?"disabled":"")+'>삭제</button></div></div></div>'}).join("")||'<p class="muted">내 주문이 없습니다.</p>';
+ $("editableMenu").innerHTML=host?(current.menu||[]).map(m=>'<div class="item between"><span>'+esc(m.name)+'<br><small>'+money(m.price)+'</small></span><div class="row"><button class="tiny subtle" data-action="editMenu" data-id="'+esc(m.id)+'">수정</button><button class="tiny danger" data-action="deleteMenu" data-id="'+esc(m.id)+'">삭제</button></div></div>').join("")||'<p class="muted">메뉴가 없습니다.</p>':"";
+}
+async function updateOrder(items,nick){if(!current||current.closed)throw Error("주문이 마감되었습니다.");nick=(nick??$("nick").value).trim();if(!nick)throw Error("이름 또는 닉네임을 입력하세요.");await set(ref(db,path("orders/"+uid)),{nick,items,updatedAt:Date.now()});}
+async function saveMenu(menu){if(!isHost())throw Error("방장만 메뉴를 수정할 수 있습니다.");await set(ref(db,path("menu")),menu);}
+async function act(fn){try{await fn()}catch(e){say(e.message||String(e))}}
+$("makeRoom").addEventListener("click",()=>act(async()=>{
+ const c=JSON.parse($("config").value.trim());$("makeRoom").disabled=true;try{
+ const r=uidStr();await connect(c,r,true);history.replaceState(null,"",link());say("주문방을 만들었습니다. 링크를 공유하세요.");
+ }finally{$("makeRoom").disabled=false}
+}));
+$("copy").onclick=()=>act(async()=>{await navigator.clipboard.writeText(link());say("주문방 링크를 복사했습니다.")});
+$("share").onclick=()=>act(async()=>{if(navigator.share)await navigator.share({title:"함께 주문",url:link()});else{await navigator.clipboard.writeText(link());say("링크를 복사했습니다.")}});
+$("saveNick").onclick=()=>act(async()=>{await updateOrder(my().items);say("이름을 저장했습니다.")});
+$("addOrder").onclick=()=>act(async()=>{
+ const id=$("menuSelect").value,m=(current.menu||[]).find(x=>x.id===id),qty=Math.floor(Number($("qty").value)),option=$("option").value.trim();
+ if(!m)throw Error("메뉴를 선택하세요.");if(!(qty>=1&&qty<=99))throw Error("수량은 1~99개여야 합니다.");
+ await updateOrder([...(my().items||[]),{menuId:id,name:m.name,price:m.price,qty,option}]);$("option").value="";$("qty").value="1";say("내 주문에 추가했습니다.");
+});
+$("myItems").onclick=e=>act(async()=>{
+ const b=e.target.closest("button[data-action]");if(!b)return;let arr=[...(my().items||[])],i=Number(b.dataset.index),x=arr[i];if(!x)return;
+ if(b.dataset.action==="deleteOrder")arr.splice(i,1);
+ if(b.dataset.action==="increment")arr[i]={...x,qty:Math.min(99,Number(x.qty)+1)};
+ if(b.dataset.action==="decrement"){if(Number(x.qty)<=1)arr.splice(i,1);else arr[i]={...x,qty:Number(x.qty)-1}}
+ await updateOrder(arr);
+});
+$("saveMenu").onclick=()=>act(async()=>{
+ const name=$("mName").value.trim(),price=Number($("mPrice").value);
+ if(!name||!Number.isInteger(price)||price<0)throw Error("메뉴명과 0원 이상의 가격을 입력하세요.");
+ let a=[...(current.menu||[])];
+ if(editing)a=a.map(m=>m.id===editing?{...m,name,price}:m);
+ else a.push({id:uidStr(),name,price});
+ await saveMenu(a);editing="";$("mName").value="";$("mPrice").value="";$("editorTitle").textContent="메뉴 추가하기";$("cancelMenu").hidden=true;say("메뉴를 반영했습니다.");
+});
+$("cancelMenu").onclick=()=>{editing="";$("mName").value="";$("mPrice").value="";$("editorTitle").textContent="메뉴 추가하기";$("cancelMenu").hidden=true};
+$("editableMenu").onclick=e=>act(async()=>{
+ const b=e.target.closest("button[data-action]");if(!b)return;const m=(current.menu||[]).find(x=>x.id===b.dataset.id);if(!m)return;
+ if(b.dataset.action==="editMenu"){editing=m.id;$("mName").value=m.name;$("mPrice").value=m.price;$("editorTitle").textContent="메뉴 수정하기";$("cancelMenu").hidden=false;$("mName").focus();}
+ if(b.dataset.action==="deleteMenu"){if(!confirm("이 메뉴를 삭제할까요? 기존 주문 내역은 그대로 유지됩니다."))return;await saveMenu((current.menu||[]).filter(x=>x.id!==m.id));}
+});
+$("toggleClosed").onclick=()=>act(async()=>{if(!isHost())return;await set(ref(db,path("closed")),!current.closed);say(current.closed?"주문을 다시 열었습니다.":"주문을 마감했습니다.")});
+$("importMenu").onclick=()=>act(async()=>{
+ let imported=[],bad=[];for(const line of $("ocrLines").value.split(/\r?\n/)){const s=line.trim();if(!s)continue;
+ const m=s.match(/^(.+?)\s*(?:\||\t| {2,})\s*[₩￦]?\s*(\d[\d,]*)\s*(?:원)?$/)||s.match(/^(.+?)\s+[₩￦]?\s*(\d{3,6}(?:,\d{3})?)\s*(?:원)?$/);
+ if(!m){bad.push(s);continue;}const price=Number(m[2].replace(/,/g,""));if(!Number.isFinite(price)||price<0){bad.push(s);continue;}imported.push({id:uidStr(),name:m[1].trim(),price});
+ }
+ if(!imported.length)throw Error("인식된 메뉴가 없습니다. '메뉴명 | 4500' 형식으로 입력하세요.");
+ if(!confirm(imported.length+"개 메뉴를 추가할까요?"+(bad.length?" (읽지 못한 줄 "+bad.length+"개)":"")))return;
+ await saveMenu([...(current.menu||[]),...imported]);$("ocrLines").value=bad.join("\n");say(imported.length+"개 메뉴를 추가했습니다. 이름과 가격을 확인하세요.");
+});
+$("scan").onclick=()=>act(async()=>{
+ const f=$("photo").files[0];if(!f)throw Error("메뉴판 사진을 먼저 선택하세요.");
+ $("scan").disabled=true;say("사진 글자를 읽고 있습니다. 정확하지 않으면 직접 고쳐주세요.");
+ try{
+ if(!window.Tesseract){await new Promise((resolve,reject)=>{const s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/tesseract.js@6/dist/tesseract.min.js";s.onload=resolve;s.onerror=reject;document.head.append(s)})}
+ const worker=await Tesseract.createWorker("kor+eng");try{
+ const r=await worker.recognize(f),lines=r.data.text.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+ $("ocrLines").value=lines.map(line=>{const m=line.match(/^(.+?)\s+[₩￦]?\s*(\d{1,3}(?:,\d{3})+|\d{4,6})\s*(?:원)?$/);return m?m[1]+" | "+m[2]:line}).join("\n");
+ say("문자 인식 결과를 확인·수정한 뒤 '위 메뉴를 추가하기'를 누르세요.");
+ }finally{await worker.terminate()}
+ }finally{$("scan").disabled=false}
+});
+if(url.searchParams.has("r")&&url.searchParams.has("cfg")){
+ act(async()=>{say("주문방에 접속하고 있습니다.");await connect(decode(url.searchParams.get("cfg")),url.searchParams.get("r"))});
+}else{const saved=localStorage.getItem("group-order-config");if(saved)$("config").value=saved}
+$("config").onchange=()=>localStorage.setItem("group-order-config",$("config").value);
+</script>
+</body></html>
