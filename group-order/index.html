@@ -14,8 +14,9 @@
 <div id="status" role="status" aria-live="polite"></div>
 <section id="welcome" class="card">
 <h2>새 주문방 만들기</h2><p>메뉴판 사진을 올리거나 메뉴를 직접 입력하고, 링크를 공유해 각자 스마트폰에서 주문하세요. 이름·메뉴별 합계는 모든 참여자가 함께 봅니다.</p>
-<p class="warn"><b>실시간 공유에는 Firebase 연결이 필요합니다.</b> 아래에 Firebase 웹 앱 설정(JSON)을 붙여 넣으세요. 데이터베이스 규칙 등은 <a href="./SETUP.md">설정 안내</a>를 참고하세요. 설정 전에는 다른 휴대전화와 주문이 동기화되지 않습니다.</p>
-<label for="config">Firebase 웹 앱 설정 JSON</label>
+<p class="warn"><b>실시간 공유에는 Firebase 연결이 필요합니다.</b> 아래에 Firebase 웹 앱 설정 코드를 그대로 붙여 넣으세요. 데이터베이스 규칙 등은 <a href="./SETUP.md">설정 안내</a>를 참고하세요. 설정 전에는 다른 휴대전화와 주문이 동기화되지 않습니다.</p>
+<label for="config">Firebase SDK 설정 및 구성 코드 붙여넣기</label>
+<p class="note">Firebase 콘솔의 프로젝트 설정 → 일반 → 내 앱 → SDK 설정 및 구성 → 구성에 보이는 코드를 <b>그대로 전체 복사</b>해서 붙여 넣으세요. JSON으로 직접 바꿀 필요가 없습니다.</p>
 <textarea id="config" spellcheck="false" placeholder='{"apiKey":"...","authDomain":"...","databaseURL":"https://...","projectId":"...","appId":"..."}'></textarea>
 <button id="makeRoom">새 주문방 만들기</button>
 </section>
@@ -70,6 +71,17 @@ const esc = v => String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">
 const uidStr = () => Array.from(crypto.getRandomValues(new Uint8Array(9)),v=>v.toString(36).padStart(2,"0")).join("");
 const encode = obj => btoa(unescape(encodeURIComponent(JSON.stringify(obj)))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
 const decode = s => JSON.parse(decodeURIComponent(escape(atob(s.replace(/-/g,"+").replace(/_/g,"/")))));
+function parseFirebaseConfig(raw){
+  try { return JSON.parse(raw); } catch {}
+  const block=raw.match(/\bfirebaseConfig\s*=\s*\{([\s\S]*?)\}/) || raw.match(/^\s*\{([\s\S]*?)\}\s*;?\s*$/);
+  if(!block)throw Error("Firebase SDK의 '구성' 코드를 복사해 붙여 넣어주세요.");
+  const cfg={}, allow=new Set(["apiKey","authDomain","databaseURL","projectId","appId","storageBucket","messagingSenderId","measurementId"]);
+  const rx=/(?:^|,)\s*["']?([A-Za-z][\w]*)["']?\s*:\s*(["'])([\s\S]*?)\2\s*(?=,|$)/g;
+  let match;
+  while((match=rx.exec(block[1]))!==null)if(allow.has(match[1]))cfg[match[1]]=match[3];
+  if(!cfg.apiKey || !cfg.projectId || !cfg.databaseURL || !cfg.appId)throw Error("구성 코드에 apiKey, projectId, databaseURL, appId가 모두 있어야 합니다.");
+  return cfg;
+}
 let db,auth,uid,room="",config,current=null,editing="",editingOrder=-1,joined=false;
 const url=new URL(location.href);
 function say(s){$("status").textContent=s;setTimeout(()=>{if($("status").textContent===s)$("status").textContent=""},8500)}
@@ -123,7 +135,7 @@ async function updateOrder(items,nick){if(!current||current.closed)throw Error("
 async function saveMenu(menu){if(!isHost())throw Error("방장만 메뉴를 수정할 수 있습니다.");await set(ref(db,path("menu")),menu);}
 async function act(fn){try{await fn()}catch(e){say(e.message||String(e))}}
 $("makeRoom").addEventListener("click",()=>act(async()=>{
- const c=JSON.parse($("config").value.trim());$("makeRoom").disabled=true;try{
+ const c=parseFirebaseConfig($("config").value.trim());$("makeRoom").disabled=true;try{
  const r=uidStr();await connect(c,r,true);history.replaceState(null,"",link());say("주문방을 만들었습니다. 링크를 공유하세요.");
  }finally{$("makeRoom").disabled=false}
 }));
