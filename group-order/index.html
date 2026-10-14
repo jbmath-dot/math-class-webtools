@@ -28,8 +28,16 @@
 <div>
 <section class="card" id="hostTools" hidden>
 <h2>방장: 메뉴판 관리</h2><p class="note">사진에서 메뉴·가격을 추출한 뒤 잘못 인식된 내용은 고칠 수 있습니다. 메뉴 이름이나 가격을 바꾸면 기존 주문의 합계에도 반영됩니다.</p>
-<label for="photo">메뉴판 사진</label><input id="photo" type="file" accept="image/*" capture="environment">
-<button id="scan" class="subtle" style="margin-top:8px">사진에서 메뉴 읽기</button>
+<h3>메뉴판 사진 등록</h3>
+<p class="note">이미 찍어둔 메뉴판은 휴대전화 사진 앱·갤러리에서 선택하세요. 현장에서 바로 촬영할 수도 있습니다.</p>
+<label for="photo">사진 앱 · 갤러리에서 선택</label><input id="photo" type="file" accept="image/*">
+<label for="cameraPhoto">카메라로 새로 촬영</label><input id="cameraPhoto" type="file" accept="image/*" capture="environment">
+<div id="photoPreviewWrap" hidden style="margin:12px 0;padding:10px;border:1px solid #dbe5eb;border-radius:10px;background:#f5f8fa">
+  <strong>선택한 메뉴판 사진 미리보기</strong>
+  <p id="photoName" class="note"></p>
+  <img id="photoPreview" alt="선택한 메뉴판 사진" style="display:block;max-width:100%;max-height:380px;object-fit:contain;margin:auto;border-radius:8px">
+</div>
+<button id="scan" class="subtle" style="margin-top:8px">선택한 사진에서 메뉴 읽기</button>
 <label for="ocrLines">인식 결과 / 직접 입력 (한 줄에 메뉴명 | 가격)</label>
 <textarea id="ocrLines" placeholder="아메리카노 | 4500&#10;카페라떼 | 5000"></textarea>
 <button id="importMenu" class="subtle">위 메뉴를 추가하기</button>
@@ -83,6 +91,7 @@ function parseFirebaseConfig(raw){
   return cfg;
 }
 let db,auth,uid,room="",config,current=null,editing="",editingOrder=-1,joined=false;
+let selectedMenuImage=null, previewObjectUrl=null;
 const url=new URL(location.href);
 function say(s){$("status").textContent=s;setTimeout(()=>{if($("status").textContent===s)$("status").textContent=""},8500)}
 function path(s=""){return "rooms/"+room+(s?"/"+s:"")}
@@ -180,8 +189,21 @@ $("importMenu").onclick=()=>act(async()=>{
  if(!confirm(imported.length+"개 메뉴를 추가할까요?"+(bad.length?" (읽지 못한 줄 "+bad.length+"개)":"")))return;
  await saveMenu([...(current.menu||[]),...imported]);$("ocrLines").value=bad.join("\n");say(imported.length+"개 메뉴를 추가했습니다. 이름과 가격을 확인하세요.");
 });
+function useMenuImage(file) {
+ if(!file)return;
+ if(!file.type.startsWith("image/")){say("이미지 파일을 선택하세요.");return;}
+ selectedMenuImage=file;
+ if(previewObjectUrl)URL.revokeObjectURL(previewObjectUrl);
+ previewObjectUrl=URL.createObjectURL(file);
+ $("photoPreview").src=previewObjectUrl;
+ $("photoName").textContent=file.name||"새로 촬영한 사진";
+ $("photoPreviewWrap").hidden=false;
+ say("사진을 선택했습니다. 미리보기를 확인하고 '선택한 사진에서 메뉴 읽기'를 누르세요.");
+}
+$("photo").addEventListener("change",e=>useMenuImage(e.target.files?.[0]));
+$("cameraPhoto").addEventListener("change",e=>useMenuImage(e.target.files?.[0]));
 $("scan").onclick=()=>act(async()=>{
- const f=$("photo").files[0];if(!f)throw Error("메뉴판 사진을 먼저 선택하세요.");
+ const f=selectedMenuImage;if(!f)throw Error("사진 앱·갤러리에서 메뉴판 사진을 선택하거나 카메라로 촬영하세요.");
  $("scan").disabled=true;say("사진 글자를 읽고 있습니다. 정확하지 않으면 직접 고쳐주세요.");
  try{
  if(!window.Tesseract){await new Promise((resolve,reject)=>{const s=document.createElement("script");s.src="https://cdn.jsdelivr.net/npm/tesseract.js@6/dist/tesseract.min.js";s.onload=resolve;s.onerror=reject;document.head.append(s)})}
