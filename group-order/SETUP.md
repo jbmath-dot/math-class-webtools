@@ -26,7 +26,7 @@
         },
         "orders": {
           "$userId": {
-            ".write": "auth != null && $userId === auth.uid && !root.child('rooms').child($roomId).child('closed').val()"
+            ".write": "auth != null && $userId === auth.uid && root.child('rooms').child($roomId).child('closed').val() === false"
           }
         }
       }
@@ -34,6 +34,8 @@
   }
 }
 ```
+
+참고: Firebase Realtime Database 규칙에서 논리 부정(`!`) 연산자를 데이터베이스 값에 직접 쓰면 그 값이 `null`일 때 `! only operates on booleans` 오류가 발생할 수 있습니다. 주문 마감 상태는 반드시 `=== false`로 비교합니다.
 
 이 규칙에서 방장만 메뉴·마감 상태를 수정하고, 참여자는 자기 주문만 수정할 수 있습니다. **같은 주문방 링크를 가진 사람은 모든 주문자 이름과 주문 내역을 볼 수 있습니다.** 실명·연락처 같은 민감정보를 넣지 않는 것을 권장합니다. 방 링크는 모임 참여자에게만 공유하세요.
 
