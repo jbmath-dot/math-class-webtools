@@ -47,7 +47,7 @@
 <h3>메뉴 선택</h3>
 <label for="menuSelect">메뉴</label><select id="menuSelect"><option value="">메뉴가 등록되면 표시됩니다</option></select>
 <div class="row"><div style="flex:1"><label for="qty">수량</label><input id="qty" type="number" min="1" max="99" value="1"></div><div style="flex:2"><label for="option">옵션 (선택)</label><input id="option" maxlength="70" placeholder="아이스, 샷 추가 등"></div></div>
-<button id="addOrder" style="margin-top:12px">내 주문에 추가</button>
+<div class="row" style="margin-top:12px"><button id="addOrder">내 주문에 추가</button><button id="cancelOrder" class="subtle" hidden>수정 취소</button></div>
 </div>
 <div id="myItems"></div>
 </section>
@@ -70,7 +70,7 @@ const esc = v => String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">
 const uidStr = () => Array.from(crypto.getRandomValues(new Uint8Array(9)),v=>v.toString(36).padStart(2,"0")).join("");
 const encode = obj => btoa(unescape(encodeURIComponent(JSON.stringify(obj)))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
 const decode = s => JSON.parse(decodeURIComponent(escape(atob(s.replace(/-/g,"+").replace(/_/g,"/")))));
-let db,auth,uid,room="",config,current=null,editing="",joined=false;
+let db,auth,uid,room="",config,current=null,editing="",editingOrder=-1,joined=false;
 const url=new URL(location.href);
 function say(s){$("status").textContent=s;setTimeout(()=>{if($("status").textContent===s)$("status").textContent=""},8500)}
 function path(s=""){return "rooms/"+room+(s?"/"+s:"")}
@@ -116,7 +116,7 @@ function render(){
  const sum=o.items.reduce((v,x)=>{const d=itemInfo(x);return v+d.price*d.qty},0);
  return '<div class="item"><div class="between"><strong>'+esc(o.nick||"이름 없음")+'</strong><strong>'+money(sum)+'</strong></div>'+o.items.map(x=>{const d=itemInfo(x);return '<div class="note">'+esc(d.name)+(d.option?" ("+esc(d.option)+")":"")+' ×'+d.qty+' · '+money(d.price*d.qty)+'</div>'}).join("")+'</div>';
  }).join(""):'<p class="muted">주문이 들어오면 실시간으로 표시됩니다.</p>';
- $("myItems").innerHTML=(my().items||[]).map((x,i)=>{const d=itemInfo(x);return '<div class="item"><div class="between"><div><b>'+esc(d.name)+'</b><br><small>'+esc(d.option||"기본")+' · '+money(d.price)+' × '+d.qty+'</small></div><div class="row"><button class="tiny subtle" data-action="decrement" data-index="'+i+'" '+(closed?"disabled":"")+'>−</button><span>'+d.qty+'</span><button class="tiny subtle" data-action="increment" data-index="'+i+'" '+(closed?"disabled":"")+'>+</button><button class="tiny danger" data-action="deleteOrder" data-index="'+i+'" '+(closed?"disabled":"")+'>삭제</button></div></div></div>'}).join("")||'<p class="muted">내 주문이 없습니다.</p>';
+ $("myItems").innerHTML=(my().items||[]).map((x,i)=>{const d=itemInfo(x);return '<div class="item"><div class="between"><div><b>'+esc(d.name)+'</b><br><small>'+esc(d.option||"기본")+' · '+money(d.price)+' × '+d.qty+'</small></div><div class="row"><button class="tiny subtle" data-action="decrement" data-index="'+i+'" '+(closed?"disabled":"")+'>−</button><span>'+d.qty+'</span><button class="tiny subtle" data-action="increment" data-index="'+i+'" '+(closed?"disabled":"")+'>+</button><button class="tiny subtle" data-action="editOrder" data-index="'+i+'" '+(closed?"disabled":"")+'>수정</button><button class="tiny danger" data-action="deleteOrder" data-index="'+i+'" '+(closed?"disabled":"")+'>삭제</button></div></div></div>'}).join("")||'<p class="muted">내 주문이 없습니다.</p>';
  $("editableMenu").innerHTML=host?(current.menu||[]).map(m=>'<div class="item between"><span>'+esc(m.name)+'<br><small>'+money(m.price)+'</small></span><div class="row"><button class="tiny subtle" data-action="editMenu" data-id="'+esc(m.id)+'">수정</button><button class="tiny danger" data-action="deleteMenu" data-id="'+esc(m.id)+'">삭제</button></div></div>').join("")||'<p class="muted">메뉴가 없습니다.</p>':"";
 }
 async function updateOrder(items,nick){if(!current||current.closed)throw Error("주문이 마감되었습니다.");nick=(nick??$("nick").value).trim();if(!nick)throw Error("이름 또는 닉네임을 입력하세요.");await set(ref(db,path("orders/"+uid)),{nick,items,updatedAt:Date.now()});}
@@ -133,10 +133,12 @@ $("saveNick").onclick=()=>act(async()=>{await updateOrder(my().items);say("이�
 $("addOrder").onclick=()=>act(async()=>{
  const id=$("menuSelect").value,m=(current.menu||[]).find(x=>x.id===id),qty=Math.floor(Number($("qty").value)),option=$("option").value.trim();
  if(!m)throw Error("메뉴를 선택하세요.");if(!(qty>=1&&qty<=99))throw Error("수량은 1~99개여야 합니다.");
- await updateOrder([...(my().items||[]),{menuId:id,name:m.name,price:m.price,qty,option}]);$("option").value="";$("qty").value="1";say("내 주문에 추가했습니다.");
+ const next=[...(my().items||[])],revised=editingOrder>=0;if(revised&&next[editingOrder])next[editingOrder]={menuId:id,name:m.name,price:m.price,qty,option};else next.push({menuId:id,name:m.name,price:m.price,qty,option});await updateOrder(next);editingOrder=-1;$("option").value="";$("qty").value="1";$("addOrder").textContent="내 주문에 추가";$("cancelOrder").hidden=true;say(revised?"내 주문을 수정했습니다.":"내 주문에 추가했습니다.");
 });
+$("cancelOrder").onclick=()=>{editingOrder=-1;$("option").value="";$("qty").value="1";$("addOrder").textContent="내 주문에 추가";$("cancelOrder").hidden=true};
 $("myItems").onclick=e=>act(async()=>{
  const b=e.target.closest("button[data-action]");if(!b)return;let arr=[...(my().items||[])],i=Number(b.dataset.index),x=arr[i];if(!x)return;
+ if(b.dataset.action==="editOrder"){editingOrder=i;$("menuSelect").value=x.menuId;$("qty").value=x.qty;$("option").value=x.option||"";$("addOrder").textContent="주문 수정 저장";$("cancelOrder").hidden=false;$("menuSelect").focus();return;}
  if(b.dataset.action==="deleteOrder")arr.splice(i,1);
  if(b.dataset.action==="increment")arr[i]={...x,qty:Math.min(99,Number(x.qty)+1)};
  if(b.dataset.action==="decrement"){if(Number(x.qty)<=1)arr.splice(i,1);else arr[i]={...x,qty:Number(x.qty)-1}}
