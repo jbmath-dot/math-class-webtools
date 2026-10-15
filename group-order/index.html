@@ -83,9 +83,10 @@
  <input id="storeName" maxlength="35" placeholder="예: 카페 봄, 한식당">
  <div class="row" style="margin-top:9px">
   <button id="renameStore" type="button">매장 이름 저장</button>
-  <button id="addStore" class="subtle" type="button">새 매장 탭 추가</button>
   <button id="deleteStore" class="danger" type="button">현재 탭 삭제</button>
  </div>
+ <label for="newStoreName">새로 추가할 매장 이름</label>
+ <div class="row"><input id="newStoreName" maxlength="35" placeholder="예: 분식집, 카페 2층"><button id="addStore" class="subtle" type="button">매장 탭 추가</button></div>
  <p class="note">메뉴와 주문은 매장 탭별로 구분됩니다. 메뉴나 주문이 있는 매장은 삭제할 수 없습니다.</p>
 </div>
 <p class="note">사진에서 메뉴·가격을 추출한 뒤 잘못 인식된 내용은 고칠 수 있습니다. 메뉴 이름이나 가격을 바꾸면 기존 주문의 합계에도 반영됩니다.</p>
@@ -307,6 +308,62 @@ $("makeRoom").addEventListener("click",()=>act(async()=>{
 $("copy").onclick=()=>act(async()=>{await navigator.clipboard.writeText(link());say("주문방 링크를 복사했습니다.")});
 $("share").onclick=()=>act(async()=>{if(navigator.share)await navigator.share({title:"함께 주문",url:link()});else{await navigator.clipboard.writeText(link());say("링크를 복사했습니다.")}});
 $("saveNick").onclick=()=>act(async()=>{await updateOrder(my().items);say("이름을 저장했습니다.")});
+function setStoreView(id){
+ if(!getStores().some(s=>s.id===id))return;
+ activeStoreId=id;reselectingStores.clear();
+ $("menuSelect").value="";$("qty").value="1";$("option").value="";
+ resetMenuEditor();
+ extractedCandidates=[];renderCandidates();
+ $("ocrLines").value="";
+ $("extractStatus").textContent="현재 매장에 등록할 메뉴판 사진을 선택하거나 메뉴를 직접 추가하세요.";
+ render();
+}
+$("storeTabs").onclick=e=>{
+ const button=e.target.closest("button[data-store-id]");
+ if(button&&button.dataset.storeId!==activeStoreId)setStoreView(button.dataset.storeId);
+};
+$("renameStore").onclick=()=>act(async()=>{
+ if(!isHost())throw Error("방장만 매장 이름을 바꿀 수 있습니다.");
+ const name=$("storeName").value.trim();
+ if(!name||name.length>35)throw Error("매장 이름을 1~35자로 입력해주세요.");
+ if(getStores().some(s=>s.id!==activeStoreId&&s.name.trim().toLowerCase()===name.toLowerCase()))
+  throw Error("이미 같은 이름의 매장 탭이 있습니다.");
+ const records=[...allMenuData()];
+ const index=records.findIndex(m=>m.kind==="store"&&m.id===activeStoreId);
+ if(index>=0)records[index]={...records[index],name};
+ else records.push({kind:"store",id:activeStoreId,name});
+ await saveMenu(records);say("매장 이름이 저장되었습니다.");
+});
+$("addStore").onclick=()=>act(async()=>{
+ if(!isHost())throw Error("방장만 매장 탭을 추가할 수 있습니다.");
+ const name=$("newStoreName").value.trim();
+ if(!name||name.length>35)throw Error("새 매장 이름을 1~35자로 입력해주세요.");
+ if(getStores().some(s=>s.name.trim().toLowerCase()===name.toLowerCase()))
+  throw Error("이미 같은 이름의 매장 탭이 있습니다.");
+ const id="store-"+uidStr(),oldId=activeStoreId;
+ activeStoreId=id;
+ try{await saveMenu([...allMenuData(),{kind:"store",id,name}]);}
+ catch(error){activeStoreId=oldId;throw error;}
+ $("newStoreName").value="";
+ reselectingStores.clear();$("menuSelect").value="";$("qty").value="1";$("option").value="";
+ resetMenuEditor();extractedCandidates=[];renderCandidates();
+ say(name+" 매장 탭을 추가했습니다.");
+});
+$("deleteStore").onclick=()=>act(async()=>{
+ if(!isHost())throw Error("방장만 매장 탭을 삭제할 수 있습니다.");
+ if(activeStoreId===DEFAULT_STORE_ID)throw Error("기본 매장 탭은 삭제할 수 없습니다. 이름은 변경할 수 있습니다.");
+ if(menuItems().some(m=>(m.storeId||DEFAULT_STORE_ID)===activeStoreId))
+  throw Error("이 매장에 메뉴가 있습니다. 먼저 메뉴를 삭제해주세요.");
+ if(Object.values(current.orders||{}).some(o=>Array.isArray(o.items)&&o.items.some(x=>itemStoreId(x)===activeStoreId)))
+  throw Error("이 매장에 주문이 남아 있어 삭제할 수 없습니다.");
+ const id=activeStoreId,name=getStores().find(s=>s.id===id)?.name||"현재 매장";
+ if(!confirm(name+" 매장 탭을 삭제하시겠습니까?"))return;
+ activeStoreId=DEFAULT_STORE_ID;
+ try{await saveMenu(allMenuData().filter(m=>!(m.kind==="store"&&m.id===id)));}
+ catch(error){activeStoreId=id;throw error;}
+ $("menuSelect").value="";resetMenuEditor();extractedCandidates=[];renderCandidates();
+ say("매장 탭을 삭제했습니다.");
+});
 $("menuChoices").onclick=e=>{
  const b=e.target.closest("button[data-menu-id]");if(!b||b.disabled)return;
  $("menuSelect").value=b.dataset.menuId;
@@ -316,20 +373,26 @@ $("menuChoices").onclick=e=>{
  });
 };
 $("addOrder").onclick=()=>act(async()=>{
- const id=$("menuSelect").value,m=(current.menu||[]).find(x=>x.id===id),qty=Number($("qty").value),option=$("option").value.trim();
- if(!m)throw Error("메뉴를 먼저 선택해주세요.");
+ const storeId=activeStoreId,id=$("menuSelect").value;
+ const m=menuItems().find(x=>x.id===id&&(x.storeId||DEFAULT_STORE_ID)===storeId);
+ const qty=Number($("qty").value),option=$("option").value.trim();
+ if(!m)throw Error("현재 매장에서 메뉴를 먼저 선택해주세요.");
  if(!Number.isInteger(qty)||qty<1||qty>99)throw Error("수량은 1~99개 사이의 정수로 입력해주세요.");
- const previous=my().items||[];
- if(previous.length>1&&!confirm("기존 "+previous.length+"개 주문을 새로 선택한 메뉴 1개로 변경할까요?"))return;
- await updateOrder([{menuId:id,name:m.name,price:m.price,qty,option}]);
- choosing=false;
+ const previous=Array.isArray(my().items)?my().items:[];
+ const selectedHere=previous.filter(x=>itemStoreId(x)===storeId);
+ if(selectedHere.length>1&&!confirm("이 매장의 기존 "+selectedHere.length+"개 주문을 새 메뉴로 바꿀까요?"))return;
+ const kept=previous.filter(x=>itemStoreId(x)!==storeId);
+ await updateOrder([...kept,{menuId:id,storeId,name:m.name,price:m.price,qty,option}]);
+ reselectingStores.delete(storeId);
  $("menuSelect").value="";$("qty").value="1";$("option").value="";
  render();
- say("주문이 저장되었습니다. '다시 선택하기'로 변경할 수 있습니다.");
+ say("주문을 저장했습니다. 다른 매장 탭의 주문은 그대로 유지됩니다.");
 });
 $("myItems").onclick=e=>{
- const b=e.target.closest("#reselectOrder");if(!b||current.closed)return;
- choosing=true;$("menuSelect").value="";$("qty").value="1";$("option").value="";
+ const button=e.target.closest("#reselectOrder");
+ if(!button||current.closed)return;
+ reselectingStores.add(activeStoreId);
+ $("menuSelect").value="";$("qty").value="1";$("option").value="";
  render();$("orderCard").scrollIntoView({behavior:"smooth",block:"start"});
 };
 function previewItemPhoto(src,caption=""){
@@ -405,7 +468,7 @@ $("saveMenu").onclick=()=>act(async()=>{
   if(itemPhotoCleared)photo="";
   if(itemPhotoFile)photo=await imageToThumbnail(itemPhotoFile);
   if(editing)a=a.map(m=>m.id===editing?{...m,name,price,imageData:photo}:m);
-  else a.push({id:uidStr(),name,price,imageData:photo});
+  else a.push({id:uidStr(),name,price,imageData:photo,storeId:activeStoreId});
   await saveMenu(a);
   resetMenuEditor();say("메뉴와 사진이 저장되었습니다.");
  }finally{$("saveMenu").disabled=false}
@@ -651,13 +714,13 @@ $("clearCandidates").onclick=()=>{
 };
 $("commitCandidates").onclick=()=>act(async()=>{
  if(!isHost())throw Error("방장만 메뉴를 등록할 수 있습니다.");
- const existing=(current.menu||[]).map(m=>({...m}));
- const newItems=[],byKey=new Map(existing.map((m,i)=>[m.name.trim().toLowerCase()+"|"+m.price,i]));
+ const existing=allMenuData().map(m=>({...m}));
+ const newItems=[],byKey=new Map(existing.map((m,i)=>[m.kind==="store"?null:(m.storeId||DEFAULT_STORE_ID)+"|"+m.name.trim().toLowerCase()+"|"+m.price,i]).filter(([key])=>key!==null));
  let duplicated=0,photosUpdated=0;
  for(const c of extractedCandidates){
   const name=normalizeMenuName(c.name),raw=String(c.price).trim(),price=Number(raw);
   if(!name||!raw||!Number.isSafeInteger(price)||price<0||price>10000000)throw Error("메뉴 이름과 가격을 확인해주세요. 가격은 0~1,000만 원 사이의 숫자만 입력할 수 있습니다.");
-  const key=name.toLowerCase()+"|"+price,imageData=validPhotoData(c.imageData)?c.imageData:"";
+  const key=activeStoreId+"|"+name.toLowerCase()+"|"+price,imageData=validPhotoData(c.imageData)?c.imageData:"";
   if(byKey.has(key)){
    const i=byKey.get(key);
    // 같은 메뉴가 이미 있으면 중복 생성하지 않고, 사진이 없는 기존 메뉴에 새 사진만 연결합니다.
@@ -666,7 +729,7 @@ $("commitCandidates").onclick=()=>act(async()=>{
    }else duplicated++;
    continue;
   }
-  const item={id:uidStr(),name,price,imageData};
+  const item={id:uidStr(),name,price,imageData,storeId:activeStoreId};
   newItems.push(item);byKey.set(key,-1);
  }
  if(!newItems.length&&!photosUpdated)throw Error("새로 추가할 메뉴나 연결할 사진이 없습니다. 메뉴·사진을 확인해주세요.");
