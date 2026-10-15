@@ -114,6 +114,7 @@ const DEFAULT_FIREBASE_CONFIG={
  messagingSenderId:"75402878018",
  appId:"1:75402878018:web:b88ac4a425e55a3f0ee1db"
 };
+function encodeConfig(value){return btoa(unescape(encodeURIComponent(JSON.stringify(value)))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"")}
 function decodeConfig(s){return JSON.parse(decodeURIComponent(escape(atob(s.replace(/-/g,"+").replace(/_/g,"/")))))}
 function itemsOf(v){return Array.isArray(v)?v:(v&&typeof v==="object"?Object.values(v):[])}
 function allMenus(){return Array.isArray(current?.menu)?current.menu:[]}
@@ -273,7 +274,8 @@ $("myItems").onclick=e=>{
   if(!doc.exists())throw Error("주문방이 없습니다. 방장에게 새로운 참여 링크를 요청해주세요.");
   if(doc.val().hostUid===uid){
    const hostLink=new URL("./admin.html",location.href);
-   hostLink.search=location.search;hostLink.hash="";
+   hostLink.search="?r="+encodeURIComponent(room)+"&cfg="+encodeURIComponent(encodeConfig(config));
+   hostLink.hash="";
    location.replace(hostLink.href);return;
   }
   $("loading").hidden=true;$("app").hidden=false;
