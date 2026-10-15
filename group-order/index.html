@@ -36,6 +36,11 @@ input{padding:11px;width:100%;border:1px solid #b9cbd4;border-radius:9px;color:#
 .text-choice{padding:14px;align-items:center;justify-content:space-between;gap:8px}
 .text-choice strong{flex:1}.text-choice small{white-space:nowrap}
 .full-button{display:block;width:100%;padding:15px 14px;font-size:1.05rem}
+.option-chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.option-chip{border:2px solid #d5e3ea;background:#f8fbfd;color:#214e67;padding:9px 11px;border-radius:10px;font-size:.9rem}
+.option-chip[aria-pressed="true"]{background:#dbf1fc;border-color:#117caf;color:#114b6c}
+.option-chip small{display:block;margin-top:3px;font-size:.78rem}
+#orderEstimate{margin:10px 0;color:#185f84;font-weight:750}
 .info-row{padding:10px 0;border-top:1px solid #e9eff2}
 .info-row:first-child{border:0}
 .confirmed{margin-top:14px;padding:14px;border-radius:12px;background:#f0faf5;border:1px solid #c7e4d7}
@@ -71,6 +76,8 @@ input{padding:11px;width:100%;border:1px solid #b9cbd4;border-radius:9px;color:#
      <div style="flex:1"><label for="qty">수량</label><input id="qty" type="number" min="1" max="99" value="1" inputmode="numeric"></div>
      <div style="flex:2"><label for="option">옵션 (선택)</label><input id="option" maxlength="70" placeholder="아이스, 샷 추가 등"></div>
     </div>
+    <div id="paidOptionWrap" hidden><label>추가 옵션 (필요하면 선택)</label><div id="optionChoices" class="option-chips" role="group" aria-label="추가 옵션 선택"></div></div>
+    <p id="orderEstimate" aria-live="polite">메뉴를 선택해주세요.</p>
     <button id="addOrder" class="full-button" style="margin-top:13px" type="button">이 메뉴로 주문 확정</button>
     <p class="note" id="replaceNote" hidden>새 주문을 확정할 때까지 기존 주문은 유지됩니다.</p>
    </div>
@@ -95,12 +102,19 @@ const $=id=>document.getElementById(id);
 const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const money=n=>(Number(n)||0).toLocaleString("ko-KR")+"원";
 const DEFAULT_STORE_ID="store-default";
-let db,uid,room,current=null,activeStoreId=DEFAULT_STORE_ID,reselecting=new Set(),selectedMenuId="",lastName="",lastRoomStatus="";
+let db,uid,room,current=null,activeStoreId=DEFAULT_STORE_ID,reselecting=new Set(),selectedMenuId="",selectedOptionIds=new Set();
 function say(message){$("status").textContent=message}
 function decodeConfig(s){return JSON.parse(decodeURIComponent(escape(atob(s.replace(/-/g,"+").replace(/_/g,"/")))))}
 function itemsOf(v){return Array.isArray(v)?v:(v&&typeof v==="object"?Object.values(v):[])}
 function allMenus(){return Array.isArray(current?.menu)?current.menu:[]}
-function menuItems(){return allMenus().filter(x=>x&&x.kind!=="store")}
+function menuItems(){return allMenus().filter(x=>x&&x.kind!=="store"&&x.kind!=="option")}
+function optionItems(){return allMenus().filter(x=>x&&x.kind==="option")}
+function storeOptions(){return optionItems().filter(x=>(x.storeId||DEFAULT_STORE_ID)===activeStoreId)}
+function orderAddons(x){
+ const list=Array.isArray(x.selectedOptions)?x.selectedOptions:[];
+ if(list.length)return list.map(o=>{const now=optionItems().find(m=>m.id===o.id);return {name:now?.name||o.name||"추가 옵션",price:Number(now?.price??o.price??0)}});
+ return Array.isArray(x.optionIds)?x.optionIds.map(id=>optionItems().find(m=>m.id===id)).filter(Boolean).map(m=>({name:m.name,price:Number(m.price)||0})):[];
+}
 function getStores(){
  const list=allMenus().filter(x=>x?.kind==="store"&&typeof x.id==="string"&&x.name);
  const initial=list.find(x=>x.id===DEFAULT_STORE_ID);
@@ -110,12 +124,20 @@ function menuStore(x){return x.storeId||DEFAULT_STORE_ID}
 function itemStore(x){return x.storeId||menuItems().find(m=>m.id===x.menuId)?.storeId||DEFAULT_STORE_ID}
 function info(x){
  const found=menuItems().find(m=>m.id===x.menuId);
- return {name:found?.name||x.name||"삭제된 메뉴",price:Number(found?.price??x.price??0),qty:Number(x.qty||1),option:x.option||""};
+ const addons=orderAddons(x);
+ return {name:found?.name||x.name||"삭제된 메뉴",price:Number(found?.price??x.price??0)+addons.reduce((v,o)=>v+o.price,0),basePrice:Number(found?.price??x.price??0),qty:Number(x.qty||1),option:[...addons.map(o=>o.name),x.option||""].filter(Boolean).join(" · ")};
 }
 function mine(){return current?.orders?.[uid]||{nick:"",items:[]}}
 function safePhoto(v){return typeof v==="string"&&v.length<=90000&&/^data:image\/jpeg;base64,[a-z0-9+/=]+$/i.test(v)}
 function currentOrders(){
  return Object.entries(current?.orders||{}).map(([id,o])=>[id,{...o,items:itemsOf(o.items)}]).filter(([_,o])=>o.items.length);
+}
+function updateOrderEstimate(){
+ const picked=menuItems().find(m=>m.id===selectedMenuId&&(m.storeId||DEFAULT_STORE_ID)===activeStoreId);
+ const qty=Number($("qty").value);
+ if(!picked||!Number.isInteger(qty)||qty<1){$("orderEstimate").textContent="메뉴를 선택해주세요.";return;}
+ const additions=storeOptions().filter(x=>selectedOptionIds.has(x.id)).reduce((sum,x)=>sum+(Number(x.price)||0),0);
+ $("orderEstimate").textContent="예상 결제금액 "+money((Number(picked.price)+additions)*qty)+" (메뉴 "+money(picked.price)+" + 옵션 "+money(additions)+") × "+qty+"개";
 }
 function render(){
  if(!current)return;
@@ -135,6 +157,10 @@ function render(){
  $("nick").disabled=closed;$("saveNick").disabled=closed;
  if(document.activeElement!==$("nick")&&own.nick)$("nick").value=own.nick;
  const menu=menuItems().filter(m=>menuStore(m)===activeStoreId);
+ const paid=storeOptions();
+ for(const id of [...selectedOptionIds])if(!paid.some(o=>o.id===id))selectedOptionIds.delete(id);
+ $("paidOptionWrap").hidden=!paid.length;
+ $("optionChoices").innerHTML=paid.map(o=>'<button type="button" class="option-chip" data-option-id="'+esc(o.id)+'" aria-pressed="'+(selectedOptionIds.has(o.id)?'true':'false')+'" '+(closed?'disabled':'')+'>'+esc(o.name)+'<small>+'+money(o.price)+'</small></button>').join("");
  if(!menu.some(m=>m.id===selectedMenuId))selectedMenuId="";
  const photo=menu.filter(m=>safePhoto(m.imageData));
  const text=menu.filter(m=>!safePhoto(m.imageData));
@@ -162,6 +188,7 @@ function render(){
   const sub=o.items.reduce((v,x)=>{const d=info(x);return v+d.price*d.qty},0);
   return '<div class="info-row"><div class="between"><strong>'+esc(o.nick||"이름 없음")+'</strong><strong>'+money(sub)+'</strong></div>'+o.items.map(x=>{const d=info(x);return '<div class="note">'+esc(d.name)+(d.option?" · "+esc(d.option):"")+' ×'+d.qty+'</div>'}).join("")+'</div>';
  }).join(""):'<p class="note">참여자의 주문이 여기에 표시됩니다.</p>';
+ updateOrderEstimate();
  const myTotal=existingHere.reduce((v,x)=>{const d=info(x);return v+d.price*d.qty},0);
  $("myItems").innerHTML=existingHere.length?
  '<div class="confirmed"><div class="between"><strong>내가 선택한 메뉴</strong><span class="pill">'+(closed?"마감":"선택 완료")+'</span></div>'+
@@ -172,7 +199,7 @@ function render(){
 }
 function setStore(id){
  if(!getStores().some(s=>s.id===id))return;
- activeStoreId=id;selectedMenuId="";$("qty").value="1";$("option").value="";render();
+ activeStoreId=id;selectedMenuId="";selectedOptionIds.clear();$("qty").value="1";$("option").value="";render();
 }
 async function writeOrder(items,nick){
  if(!current||current.closed)throw Error("주문이 마감되었습니다.");
@@ -188,11 +215,19 @@ $("storeTabs").onclick=e=>{
 $("menuChoices").onclick=e=>{
  const b=e.target.closest("button[data-menu-id]");if(!b||b.disabled)return;
  selectedMenuId=b.dataset.menuId;
+ updateOrderEstimate();
  $("menuChoices").querySelectorAll("button[data-menu-id]").forEach(x=>{
   const picked=x.dataset.menuId===selectedMenuId;
   x.classList.toggle("is-selected",picked);x.setAttribute("aria-pressed",String(picked));
  });
 };
+$("optionChoices").onclick=e=>{
+ const b=e.target.closest("button[data-option-id]");if(!b||b.disabled)return;
+ const id=b.dataset.optionId;
+ if(selectedOptionIds.has(id))selectedOptionIds.delete(id);else selectedOptionIds.add(id);
+ b.setAttribute("aria-pressed",selectedOptionIds.has(id)?"true":"false");updateOrderEstimate();
+};
+$("qty").oninput=updateOrderEstimate;
 $("saveNick").onclick=()=>act(async()=>{
  await writeOrder(itemsOf(mine().items));say("닉네임이 저장되었습니다.");
 });
@@ -200,18 +235,19 @@ $("addOrder").onclick=()=>act(async()=>{
  const storeId=activeStoreId;
  const chosen=menuItems().find(m=>m.id===selectedMenuId&&menuStore(m)===storeId);
  const qty=Number($("qty").value),option=$("option").value.trim();
+ const selectedOptions=storeOptions().filter(o=>selectedOptionIds.has(o.id)).map(o=>({id:o.id,name:o.name,price:Number(o.price)||0}));
  if(!chosen)throw Error("메뉴를 선택해주세요.");
  if(!Number.isInteger(qty)||qty<1||qty>99)throw Error("수량은 1~99개 사이의 정수로 입력해주세요.");
  const previous=itemsOf(mine().items);
  if(previous.filter(x=>itemStore(x)===storeId).length>1&&!confirm("이 매장의 여러 주문을 새 메뉴 하나로 교체하시겠습니까?"))return;
  const kept=previous.filter(x=>itemStore(x)!==storeId);
- await writeOrder([...kept,{menuId:chosen.id,storeId,name:chosen.name,price:chosen.price,qty,option}]);
- reselecting.delete(storeId);selectedMenuId="";$("qty").value="1";$("option").value="";
+ await writeOrder([...kept,{menuId:chosen.id,storeId,name:chosen.name,price:chosen.price,qty,option,selectedOptions}]);
+ reselecting.delete(storeId);selectedMenuId="";selectedOptionIds.clear();$("qty").value="1";$("option").value="";
  render();say("주문이 저장되었습니다. 다른 매장의 선택은 유지됩니다.");
 });
 $("myItems").onclick=e=>{
  if(!e.target.closest("#reselectOrder")||current.closed)return;
- reselecting.add(activeStoreId);selectedMenuId="";$("qty").value="1";$("option").value="";
+ reselecting.add(activeStoreId);selectedMenuId="";selectedOptionIds.clear();$("qty").value="1";$("option").value="";
  render();$("orderCard").scrollIntoView({behavior:"smooth",block:"start"});
 };
 (async()=>{
