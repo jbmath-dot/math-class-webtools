@@ -185,7 +185,10 @@ function parseFirebaseConfig(raw){
   if(!cfg.apiKey || !cfg.projectId || !cfg.databaseURL || !cfg.appId)throw Error("구성 코드에 apiKey, projectId, databaseURL, appId가 모두 있어야 합니다.");
   return cfg;
 }
-let db,auth,uid,room="",config,current=null,editing="",joined=false,choosing=true;
+let db,auth,uid,room="",config,current=null,editing="",joined=false;
+const DEFAULT_STORE_ID="store-default";
+let activeStoreId=DEFAULT_STORE_ID;
+const reselectingStores=new Set();
 let selectedMenuImage=null, previewObjectUrl=null, extractedCandidates=[];
 let itemPhotoFile=null,itemPhotoCleared=false,itemPhotoPreviewUrl=null;
 let cropCandidateIndex=-1,cropRect={x:.2,y:.2,w:.6,h:.5},cropAnchor=null,ocrProcessedImage=null;
@@ -195,7 +198,22 @@ function path(s=""){return "rooms/"+room+(s?"/"+s:"")}
 function isHost(){return current?.hostUid===uid}
 function my(){return current?.orders?.[uid]||{nick:"",items:[]}}
 function validPhotoData(v){return typeof v==="string"&&v.length<=90000&&/^data:image\/jpeg;base64,[a-z0-9+/=]+$/i.test(v)}
-function itemInfo(x){const found=(current?.menu||[]).find(m=>m.id===x.menuId);return {name:found?.name||x.name||"삭제된 메뉴",price:Number(found?.price??x.price??0),qty:Number(x.qty||1),option:x.option||""}}
+function allMenuData(){return Array.isArray(current?.menu)?current.menu:[]}
+function menuItems(){return allMenuData().filter(m=>m&&m.kind!=="store")}
+function getStores(){
+ const data=allMenuData();
+ const listed=data.filter(m=>m?.kind==="store"&&typeof m.id==="string"&&m.name);
+ const first=listed.find(m=>m.id===DEFAULT_STORE_ID);
+ return [{id:DEFAULT_STORE_ID,name:first?.name||"기본 매장"},...listed.filter(m=>m.id!==DEFAULT_STORE_ID).map(m=>({id:m.id,name:m.name}))];
+}
+function itemStoreId(x){
+ const match=menuItems().find(m=>m.id===x.menuId);
+ return x.storeId||match?.storeId||DEFAULT_STORE_ID;
+}
+function itemInfo(x){
+ const found=menuItems().find(m=>m.id===x.menuId);
+ return {name:found?.name||x.name||"삭제된 메뉴",price:Number(found?.price??x.price??0),qty:Number(x.qty||1),option:x.option||"",storeId:itemStoreId(x)};
+}
 function link(){let u=new URL(location.href);u.search="?r="+encodeURIComponent(room)+"&cfg="+encodeURIComponent(encode(config));u.hash="";return u.href}
 async function connect(c,r,create=false){
  if(!c?.apiKey||!c?.projectId||!c?.databaseURL||!c?.appId)throw Error("Firebase 설정의 apiKey, projectId, databaseURL, appId가 필요합니다.");
@@ -210,20 +228,34 @@ async function connect(c,r,create=false){
  onValue(ref(db,path()),s=>{current=s.val();if(current){render();joined=true}else say("주문방이 삭제되었거나 접근할 수 없습니다.")},e=>say("실시간 연결 오류: "+e.message));
 }
 function render(){
+ const stores=getStores();
+ if(!stores.some(s=>s.id===activeStoreId))activeStoreId=DEFAULT_STORE_ID;
+ const store=stores.find(s=>s.id===activeStoreId);
  const host=isHost(),closed=!!current.closed,mine=my(),previous=Array.isArray(mine.items)?mine.items:[];
- if(!joined && previous.length)choosing=false;
- $("shareBox").hidden=!host;
+ const previousHere=previous.filter(x=>itemStoreId(x)===activeStoreId);
+ const allOrders=Object.entries(current.orders||{}).filter(([_,o])=>Array.isArray(o.items)&&o.items.length);
+ const perStoreCounts=new Map(stores.map(s=>[s.id,allOrders.filter(([_,o])=>o.items.some(x=>itemStoreId(x)===s.id)).length]));
+ $("storeTabs").innerHTML=stores.map(s=>
+  '<button type="button" role="tab" class="store-tab" data-store-id="'+esc(s.id)+'" aria-selected="'+(activeStoreId===s.id?'true':'false')+'">'+esc(s.name)+'<span class="tab-count">'+(perStoreCounts.get(s.id)||0)+'명 주문</span></button>'
+ ).join("");
  $("hostTools").hidden=!host;
+ $("shareBox").hidden=!host;
+ $("orderStoreTitle").textContent=store.name;
+ $("summaryStoreTitle").textContent=store.name;
+ $("hostStoreTitle").textContent=store.name;
+ if(document.activeElement!==$("storeName"))$("storeName").value=store.name;
+ $("deleteStore").disabled=activeStoreId===DEFAULT_STORE_ID;
  $("roomState").textContent=closed?"주문 마감":"주문 접수 중";
  $("participantRoomState").textContent=closed?"주문 마감":"주문 접수 중";
  $("toggleClosed").textContent=closed?"주문 다시 열기":"주문 마감";
- $("newOrder").hidden=closed||(!choosing&&previous.length>0);
- $("replaceNote").hidden=!previous.length;
+ $("newOrder").hidden=closed||(previousHere.length>0&&!reselectingStores.has(activeStoreId));
+ $("replaceNote").hidden=!previousHere.length;
  $("nick").disabled=closed;$("saveNick").disabled=closed;
  if(document.activeElement!==$("nick"))$("nick").value=mine.nick||$("nick").value;
- const selected=$("menuSelect").value,menu=current.menu||[];
+ const selected=$("menuSelect").value;
+ const menu=menuItems().filter(m=>(m.storeId||DEFAULT_STORE_ID)===activeStoreId);
  $("menuSelect").innerHTML='<option value="">메뉴를 골라주세요</option>'+menu.map(m=>'<option value="'+esc(m.id)+'">'+esc(m.name)+' · '+money(m.price)+'</option>').join("");
- if(menu.some(x=>x.id===selected))$("menuSelect").value=selected;
+ if(menu.some(m=>m.id===selected))$("menuSelect").value=selected;
  const photoMenu=menu.filter(m=>validPhotoData(m.imageData));
  const textMenu=menu.filter(m=>!validPhotoData(m.imageData));
  const attrs=m=>'data-menu-id="'+esc(m.id)+'" aria-pressed="'+(m.id===$("menuSelect").value?'true':'false')+'" '+(closed?'disabled':'');
@@ -235,33 +267,34 @@ function render(){
  (textMenu.length?'<div class="text-choices">'+textMenu.map(m=>
   '<button type="button" class="choice text-choice'+cls(m)+'" '+attrs(m)+'><strong>'+esc(m.name)+'</strong><small>'+money(m.price)+'</small></button>'
  ).join("")+'</div>':'')
- :'<p class="muted">방장이 메뉴를 등록하면 이곳에 바로 나타납니다.</p>';
- const orders=Object.entries(current.orders||{}).filter(([_,o])=>Array.isArray(o.items)&&o.items.length);
- $("participantCount").textContent=orders.length+"명 주문 참여";
+ :'<p class="muted">방장이 '+esc(store.name)+'의 메뉴를 등록하면 여기에 표시됩니다.</p>';
+ const orders=allOrders.map(([id,o])=>[id,{...o,items:o.items.filter(x=>itemStoreId(x)===activeStoreId)}]).filter(([_,o])=>o.items.length);
+ $("participantCount").textContent=allOrders.length+"명 주문 참여";
  $("totalPeople").textContent=orders.length+"명";
- const totalQty=orders.reduce((n,[_,o])=>n+o.items.reduce((sum,i)=>sum+(Number(i.qty)||0),0),0);
- $("totalItems").textContent=totalQty+"개";
+ $("totalItems").textContent=orders.reduce((n,[_,o])=>n+o.items.reduce((sum,i)=>sum+(Number(i.qty)||0),0),0)+"개";
+ const allTotal=allOrders.reduce((n,[_,o])=>n+o.items.reduce((v,x)=>{const d=itemInfo(x);return v+d.price*d.qty},0),0);
+ $("allStoreTotals").textContent="전체 매장 합계 "+money(allTotal);
  let total=0,groups=new Map();
  for(const [person,o] of orders)for(const x of o.items){
- const d=itemInfo(x);total+=d.price*d.qty;
- const k=d.name+"§"+d.option+"§"+d.price;
- let v=groups.get(k)||{...d,qty:0};v.qty+=d.qty;groups.set(k,v);
+  const d=itemInfo(x);total+=d.price*d.qty;
+  const key=d.name+"§"+d.option+"§"+d.price;
+  let v=groups.get(key)||{...d,qty:0};v.qty+=d.qty;groups.set(key,v);
  }
  $("grandTotal").textContent=money(total);
- $("byMenu").innerHTML=groups.size?[...groups.values()].map(g=>'<div class="item between"><span>'+esc(g.name)+(g.option?'<small> · '+esc(g.option)+'</small>':"")+' <b>×'+g.qty+'</b></span><b>'+money(g.qty*g.price)+'</b></div>').join(""):'<p class="muted">아직 주문이 없습니다.</p>';
+ $("byMenu").innerHTML=groups.size?[...groups.values()].map(g=>'<div class="item between"><span>'+esc(g.name)+(g.option?'<small> · '+esc(g.option)+'</small>':"")+' <b>×'+g.qty+'</b></span><b>'+money(g.qty*g.price)+'</b></div>').join(""):'<p class="muted">이 매장에는 아직 주문이 없습니다.</p>';
  $("byPerson").innerHTML=orders.length?orders.map(([person,o])=>{
- const sum=o.items.reduce((v,x)=>{const d=itemInfo(x);return v+d.price*d.qty},0);
- return '<div class="item"><div class="between"><strong>'+esc(o.nick||"이름 없음")+'</strong><strong>'+money(sum)+'</strong></div>'+o.items.map(x=>{const d=itemInfo(x);return '<div class="note">'+esc(d.name)+(d.option?" ("+esc(d.option)+")":"")+' ×'+d.qty+' · '+money(d.price*d.qty)+'</div>'}).join("")+'</div>';
- }).join(""):'<p class="muted">주문이 들어오면 실시간으로 표시됩니다.</p>';
- const myTotal=previous.reduce((sum,x)=>{const d=itemInfo(x);return sum+d.price*d.qty},0);
- $("myItems").innerHTML=previous.length?
- '<div class="selected-order"><div class="between"><strong>내가 선택한 메뉴</strong><span class="pill">'+(closed?"마감":"선택 완료")+'</span></div>'
- +previous.map(x=>{const d=itemInfo(x);return '<div class="item between"><span>'+esc(d.name)+(d.option?'<small> · '+esc(d.option)+'</small>':'')+' ×'+d.qty+'</span><strong>'+money(d.price*d.qty)+'</strong></div>'}).join("")
- +'<div class="between"><b>내 주문 합계</b><b>'+money(myTotal)+'</b></div>'
- +(!closed?'<button class="subtle" id="reselectOrder" type="button">다시 선택하기</button>':'')
- +'</div>':
- (closed?'<p class="muted">주문이 마감되었습니다.</p>':'');
- $("editableMenu").innerHTML=host?menu.map(m=>'<div class="item between"><div class="row">'+(validPhotoData(m.imageData)?'<img class="menu-edit-thumb" alt="" src="'+m.imageData+'">':'')+'<span>'+esc(m.name)+'<br><small>'+money(m.price)+(validPhotoData(m.imageData)?' · 사진 등록됨':' · 사진 없음')+'</small></span></div><div class="row"><button class="tiny subtle" data-action="editMenu" data-id="'+esc(m.id)+'">수정</button><button class="tiny danger" data-action="deleteMenu" data-id="'+esc(m.id)+'">삭제</button></div></div>').join("")||'<p class="muted">메뉴가 없습니다.</p>':"";
+  const sum=o.items.reduce((v,x)=>{const d=itemInfo(x);return v+d.price*d.qty},0);
+  return '<div class="item"><div class="between"><strong>'+esc(o.nick||"이름 없음")+'</strong><strong>'+money(sum)+'</strong></div>'+o.items.map(x=>{const d=itemInfo(x);return '<div class="note">'+esc(d.name)+(d.option?" ("+esc(d.option)+")":"")+' ×'+d.qty+' · '+money(d.price*d.qty)+'</div>'}).join("")+'</div>';
+ }).join(""):'<p class="muted">이 매장에 주문이 들어오면 실시간으로 표시됩니다.</p>';
+ const myTotal=previousHere.reduce((sum,x)=>{const d=itemInfo(x);return sum+d.price*d.qty},0);
+ $("myItems").innerHTML=previousHere.length?
+  '<div class="selected-order"><div class="between"><strong>내가 선택한 메뉴</strong><span class="pill">'+(closed?"마감":"선택 완료")+'</span></div>'
+  +previousHere.map(x=>{const d=itemInfo(x);return '<div class="item between"><span>'+esc(d.name)+(d.option?'<small> · '+esc(d.option)+'</small>':'')+' ×'+d.qty+'</span><strong>'+money(d.price*d.qty)+'</strong></div>'}).join("")
+  +'<div class="between"><b>이 매장 내 주문 합계</b><b>'+money(myTotal)+'</b></div>'
+  +(!closed?'<button class="subtle" id="reselectOrder" type="button">이 매장 다시 선택하기</button>':'')
+  +'</div>':
+  (closed?'<p class="muted">주문이 마감되었습니다.</p>':'');
+ $("editableMenu").innerHTML=host?menu.map(m=>'<div class="item between"><div class="row">'+(validPhotoData(m.imageData)?'<img class="menu-edit-thumb" alt="" src="'+m.imageData+'">':'')+'<span>'+esc(m.name)+'<br><small>'+money(m.price)+(validPhotoData(m.imageData)?' · 사진 등록됨':' · 사진 없음')+'</small></span></div><div class="row"><button class="tiny subtle" data-action="editMenu" data-id="'+esc(m.id)+'">수정</button><button class="tiny danger" data-action="deleteMenu" data-id="'+esc(m.id)+'">삭제</button></div></div>').join("")||'<p class="muted">이 매장에 등록된 메뉴가 없습니다.</p>':"";
 }
 async function updateOrder(items,nick){if(!current||current.closed)throw Error("주문이 마감되었습니다.");nick=(nick??$("nick").value).trim();if(!nick)throw Error("이름 또는 닉네임을 입력하세요.");await set(ref(db,path("orders/"+uid)),{nick,items,updatedAt:Date.now()});}
 async function saveMenu(menu){if(!isHost())throw Error("방장만 메뉴를 수정할 수 있습니다.");await set(ref(db,path("menu")),menu);}
