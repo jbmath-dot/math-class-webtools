@@ -232,7 +232,15 @@ function itemInfo(x){
  const addonList=orderAddons(x);
  return {name:found?.name||x.name||"삭제된 메뉴",price:Number(found?.price??x.price??0)+addonList.reduce((a,o)=>a+o.price,0),basePrice:Number(found?.price??x.price??0),qty:Number(x.qty||1),option:[...addonList.map(o=>o.name),x.option||""].filter(Boolean).join(" · "),storeId:itemStoreId(x)};
 }
-function link(){let u=new URL("./index.html",location.href);u.search="?r="+encodeURIComponent(room)+"&cfg="+encodeURIComponent(encode(config));u.hash="";return u.href}
+function link(){
+ // 이 프로젝트는 참여자 화면에 Firebase 웹 설정이 내장되어 있어 긴 cfg 값을 링크에 넣지 않아도 됩니다.
+ const common=config?.projectId==="pay-order"&&config?.apiKey==="AIzaSyCmfQSaW3gJvD-N_xJ_3DyAJNmOaCoxWkQ"
+  &&config?.databaseURL==="https://pay-order-default-rtdb.firebaseio.com";
+ if(common&&room==="273m3d1e2p0342231x")return new URL("../o/",location.href).href;
+ const u=new URL("./index.html",location.href);
+ u.search="?r="+encodeURIComponent(room)+(common?"":"&cfg="+encodeURIComponent(encode(config)));
+ u.hash="";return u.href;
+}
 function adminLink(){let u=new URL("./admin.html",location.href);u.search="?r="+encodeURIComponent(room)+"&cfg="+encodeURIComponent(encode(config));u.hash="";return u.href}
 async function connect(c,r,create=false){
  if(!c?.apiKey||!c?.projectId||!c?.databaseURL||!c?.appId)throw Error("Firebase 설정의 apiKey, projectId, databaseURL, appId가 필요합니다.");
