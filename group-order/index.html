@@ -38,7 +38,7 @@
 .crop-modal[hidden]{display:none}
 .crop-panel{width:min(680px,100%);max-height:95vh;overflow:auto;margin:0}
 .crop-stage{position:relative;width:100%;touch-action:none;user-select:none}
-.crop-stage img{display:block;width:100%;height:auto;max-height:65vh;object-fit:contain;pointer-events:none}
+.crop-stage img{display:block;width:100%;height:auto;object-fit:contain;pointer-events:none}
 .crop-rect{position:absolute;border:3px solid #f9bb29;background:#ffda3d35;box-shadow:0 0 0 999px #0003;pointer-events:none}
 
 @media(max-width:420px){.choices{gap:7px}.choice{padding:10px;min-height:66px}}
@@ -476,6 +476,77 @@ $("cropRemove").onclick=()=>{
  }
  closeCropModal();renderCandidates();
 };
+function normalizeOCRText(x){return String(x||"").toLowerCase().replace(/[^가-힣a-z0-9]/g,"")}
+function ocrLines(blocks,width,height){
+ const result=[];
+ for(const block of blocks||[])for(const para of block.paragraphs||[])for(const line of para.lines||[]){
+  const box=line.bbox,name=normalizeOCRText(line.text||line.words?.map(w=>w.text).join(" ")||"");
+  if(!box||!name)continue;
+  result.push({name,box:{x0:box.x0/width,y0:box.y0/height,x1:box.x1/width,y1:box.y1/height}});
+ }
+ return result;
+}
+function suggestPhotoAreas(box,W,H){
+ const cx=(box.x0+box.x1)/2,cy=(box.y0+box.y1)/2;
+ const width=.30,height=clamp(width*W/H*.8,.10,.32),gap=.017;
+ const rect=(x,y)=>({x:clamp(x,0,1-width),y:clamp(y,0,1-height),w:width,h:height});
+ return [rect(cx-width/2,box.y0-gap-height),rect(box.x0-width-gap,cy-height/2),rect(box.x1+gap,cy-height/2),rect(cx-width/2,box.y1+gap)];
+}
+function photoLikelihood(pixels,rect,lines){
+ const {data,width,height}=pixels,x0=Math.floor(rect.x*width),y0=Math.floor(rect.y*height);
+ const x1=Math.min(width,Math.ceil((rect.x+rect.w)*width)),y1=Math.min(height,Math.ceil((rect.y+rect.h)*height));
+ let n=0,color=0,texture=0,last=0;
+ for(let y=y0;y<y1;y+=2)for(let x=x0;x<x1;x+=2){
+  const i=(y*width+x)*4,r=data[i],g=data[i+1],b=data[i+2];
+  if(Math.max(r,g,b)-Math.min(r,g,b)>28&&Math.max(r,g,b)<245)color++;
+  const gray=(r+g+b)/3;if(n)texture+=Math.abs(gray-last)/255;last=gray;n++;
+ }
+ let textCoverage=0;
+ for(const l of lines){
+  const a=l.box;
+  textCoverage+=Math.max(0,Math.min(a.x1,rect.x+rect.w)-Math.max(a.x0,rect.x))*
+   Math.max(0,Math.min(a.y1,rect.y+rect.h)-Math.max(a.y0,rect.y))/(rect.w*rect.h);
+ }
+ return n?color/n*.8+texture/n*.2-Math.min(.6,textCoverage*3):0;
+}
+async function autoSuggestPhotos(blocks,input){
+ if(!blocks?.length||!selectedMenuImage||!extractedCandidates.length)return 0;
+ const src=await getImageSource(input);
+ const W=src.width||src.naturalWidth,H=src.height||src.naturalHeight;
+ try{
+  const lines=ocrLines(blocks,W,H);if(!lines.length)return 0;
+  const c=document.createElement("canvas");c.width=150;c.height=Math.max(1,Math.round(150*H/W));
+  const context=c.getContext("2d",{willReadFrequently:true});context.drawImage(src,0,0,c.width,c.height);
+  const pixels=context.getImageData(0,0,c.width,c.height);
+  let count=0;const used=new Set();
+  for(const candidate of extractedCandidates){
+   const name=normalizeOCRText(candidate.name);
+   if(name.length<2)continue;
+   let index=-1,best=0;
+   for(let i=0;i<lines.length;i++){
+    if(used.has(i))continue;
+    const line=lines[i].name;
+    if(line.includes(name)||name.includes(line)&&line.length>=3){
+     const match=Math.min(name.length,line.length)/Math.max(name.length,line.length);
+     if(match>best){best=match;index=i;}
+    }
+   }
+   if(index<0)continue;
+   used.add(index);
+   const regions=suggestPhotoAreas(lines[index].box,W,H);
+   const options=regions.map(rect=>({rect,score:photoLikelihood(pixels,rect,lines)})).sort((a,b)=>b.score-a.score);
+   // 색상/질감이 충분하지 않은 텍스트형 메뉴판에는 사진을 억지로 붙이지 않음.
+   if(!options.length||options[0].score<.1)continue;
+   candidate.cropRect=options[0].rect;
+   try{
+    candidate.imageData=await imageToThumbnail(input,options[0].rect);
+    candidate.photoOrigin="auto";count++;
+   }catch{/* 사진 추출 실패 시에도 메뉴·가격은 등록 가능 */}
+  }
+  c.width=0;c.height=0;
+  return count;
+ }finally{src.close?.()}
+}
 function showExtracted(text,label){
  const result=extractFromText(text);
  extractedCandidates=result.found;
@@ -541,13 +612,13 @@ $("commitCandidates").onclick=()=>act(async()=>{
 function useMenuImage(file) {
  if(!file)return;
  if(!file.type.startsWith("image/")){say("이미지 파일을 선택하세요.");return;}
- selectedMenuImage=file;
+ selectedMenuImage=file;ocrProcessedImage=null;
  if(previewObjectUrl)URL.revokeObjectURL(previewObjectUrl);
  previewObjectUrl=URL.createObjectURL(file);
  $("photoPreview").src=previewObjectUrl;
  $("photoName").textContent=file.name||"새로 촬영한 사진";
  $("photoPreviewWrap").hidden=false;
- say("사진을 선택했습니다. 미리보기를 확인하고 '선택한 사진에서 메뉴 읽기'를 누르세요.");
+ say("사진을 선택했습니다. 이제 '사진에서 메뉴·가격 인식하기'를 누르세요.");
 }
 $("photo").addEventListener("change",e=>useMenuImage(e.target.files?.[0]));
 $("cameraPhoto").addEventListener("change",e=>useMenuImage(e.target.files?.[0]));
@@ -594,11 +665,16 @@ $("scan").onclick=()=>act(async()=>{
     }
    }
   });
-  const result=await worker.recognize(input);
+  const result=await worker.recognize(input,{}, {blocks:true});
   const raw=(result?.data?.text||"").trim();
   $("ocrLines").value=raw;
   if(!raw)throw Error("사진에서 글자를 인식하지 못했습니다. 더 선명한 JPG/PNG 사진으로 시도하거나 메뉴를 직접 입력하세요.");
   showExtracted(raw,"사진 인식 완료");
+  ocrProcessedImage=input;
+  $("extractStatus").textContent="음식 사진 영역을 자동 추천하고 있습니다.";
+  const suggested=await autoSuggestPhotos(result?.data?.blocks||[],input);
+  renderCandidates();
+  $("extractStatus").textContent="메뉴 "+extractedCandidates.length+"개 인식, 음식 사진 "+suggested+"개 자동 추천. 메뉴명·가격·사진을 확인하세요.";
   if(extractedCandidates.length)$("menuCandidatesWrap").scrollIntoView({behavior:"smooth",block:"nearest"});
  }catch(error){
   $("rawTextDetail").open=true;
