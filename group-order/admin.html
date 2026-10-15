@@ -705,7 +705,10 @@ function photoLikelihood(pixels,rect,lines){
   textCoverage+=Math.max(0,Math.min(a.x1,rect.x+rect.w)-Math.max(a.x0,rect.x))*
    Math.max(0,Math.min(a.y1,rect.y+rect.h)-Math.max(a.y0,rect.y))/(rect.w*rect.h);
  }
- return n?color/n*.8+texture/n*.2-Math.min(.6,textCoverage*3):0;
+ const visualDetail=n?texture/n:0;const saturation=n?color/n:0;
+ // 단색 배경이나 글자만 있는 영역을 음식 사진으로 잘못 판단하지 않도록 질감을 요구합니다.
+ if(visualDetail<.022)return -1;
+ return saturation*.35+Math.min(1,visualDetail*5)*.48-Math.min(.7,textCoverage*4);
 }
 function cropOverlap(a,b){
  const area=Math.max(0,Math.min(a.x+a.w,b.x+b.w)-Math.max(a.x,b.x))*
