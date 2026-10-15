@@ -593,21 +593,29 @@ $("clearCandidates").onclick=()=>{
 };
 $("commitCandidates").onclick=()=>act(async()=>{
  if(!isHost())throw Error("방장만 메뉴를 등록할 수 있습니다.");
- const existing=current.menu||[];
- const normalized=[],seen=new Set(existing.map(m=>m.name.trim().toLowerCase()+"|"+m.price));
- let duplicates=0;
+ const existing=(current.menu||[]).map(m=>({...m}));
+ const newItems=[],byKey=new Map(existing.map((m,i)=>[m.name.trim().toLowerCase()+"|"+m.price,i]));
+ let duplicated=0,photosUpdated=0;
  for(const c of extractedCandidates){
   const name=normalizeMenuName(c.name),raw=String(c.price).trim(),price=Number(raw);
   if(!name||!raw||!Number.isSafeInteger(price)||price<0||price>10000000)throw Error("메뉴 이름과 가격을 확인해주세요. 가격은 0~1,000만 원 사이의 숫자만 입력할 수 있습니다.");
-  const key=name.toLowerCase()+"|"+price;
-  if(seen.has(key)){duplicates++;continue;}
-  seen.add(key);normalized.push({id:uidStr(),name,price,imageData:validPhotoData(c.imageData)?c.imageData:""});
+  const key=name.toLowerCase()+"|"+price,imageData=validPhotoData(c.imageData)?c.imageData:"";
+  if(byKey.has(key)){
+   const i=byKey.get(key);
+   // 같은 메뉴가 이미 있으면 중복 생성하지 않고, 사진이 없는 기존 메뉴에 새 사진만 연결합니다.
+   if(i>=0&&imageData&&!validPhotoData(existing[i].imageData)){
+    existing[i].imageData=imageData;photosUpdated++;
+   }else duplicated++;
+   continue;
+  }
+  const item={id:uidStr(),name,price,imageData};
+  newItems.push(item);byKey.set(key,-1);
  }
- if(!normalized.length)throw Error("등록할 새 메뉴가 없습니다. 같은 이름·가격으로 이미 등록된 항목인지 확인해주세요.");
- await saveMenu([...existing,...normalized]);
+ if(!newItems.length&&!photosUpdated)throw Error("새로 추가할 메뉴나 연결할 사진이 없습니다. 메뉴·사진을 확인해주세요.");
+ await saveMenu([...existing,...newItems]);
  extractedCandidates=[];renderCandidates();
- $("extractStatus").textContent=normalized.length+"개 메뉴 등록 완료"+(duplicates?" (중복 "+duplicates+"개 제외)":"")+". 아래 '등록된 메뉴'에서 확인하세요.";
- say(normalized.length+"개 메뉴가 주문 목록에 추가되었습니다.");
+ $("extractStatus").textContent="메뉴 "+newItems.length+"개 추가, 기존 메뉴 사진 "+photosUpdated+"개 연결"+(duplicated?" (중복 "+duplicated+"개 제외)":"")+".";
+ say("메뉴와 음식 사진이 반영되었습니다.");
 });
 function useMenuImage(file) {
  if(!file)return;
