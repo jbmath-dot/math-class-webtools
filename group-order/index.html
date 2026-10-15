@@ -104,6 +104,16 @@ const money=n=>(Number(n)||0).toLocaleString("ko-KR")+"원";
 const DEFAULT_STORE_ID="store-default";
 let db,uid,room,current=null,activeStoreId=DEFAULT_STORE_ID,reselecting=new Set(),selectedMenuId="",selectedOptionIds=new Set();
 function say(message){$("status").textContent=message}
+// Firebase 웹 설정은 공개 클라이언트 식별자이며, 접근 권한은 Realtime Database 규칙으로 보호합니다.
+const DEFAULT_FIREBASE_CONFIG={
+ apiKey:"AIzaSyCmfQSaW3gJvD-N_xJ_3DyAJNmOaCoxWkQ",
+ authDomain:"pay-order.firebaseapp.com",
+ databaseURL:"https://pay-order-default-rtdb.firebaseio.com",
+ projectId:"pay-order",
+ storageBucket:"pay-order.firebasestorage.app",
+ messagingSenderId:"75402878018",
+ appId:"1:75402878018:web:b88ac4a425e55a3f0ee1db"
+};
 function decodeConfig(s){return JSON.parse(decodeURIComponent(escape(atob(s.replace(/-/g,"+").replace(/_/g,"/")))))}
 function itemsOf(v){return Array.isArray(v)?v:(v&&typeof v==="object"?Object.values(v):[])}
 function allMenus(){return Array.isArray(current?.menu)?current.menu:[]}
@@ -252,9 +262,9 @@ $("myItems").onclick=e=>{
 };
 (async()=>{
  const u=new URL(location.href),r=u.searchParams.get("r"),cfg=u.searchParams.get("cfg");
- if(!r||!cfg){$("loading").hidden=true;$("needInvite").hidden=false;return;}
+ if(!r){$("loading").hidden=true;$("needInvite").hidden=false;return;}
  try{
-  const config=decodeConfig(cfg);
+  const config=cfg?decodeConfig(cfg):DEFAULT_FIREBASE_CONFIG;
   if(!config.apiKey||!config.projectId||!config.databaseURL||!config.appId)throw Error("초대 링크의 Firebase 설정이 올바르지 않습니다.");
   const app=initializeApp(config);
   const credential=await signInAnonymously(getAuth(app));
