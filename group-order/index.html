@@ -163,7 +163,7 @@ function parseFirebaseConfig(raw){
 let db,auth,uid,room="",config,current=null,editing="",joined=false,choosing=true;
 let selectedMenuImage=null, previewObjectUrl=null, extractedCandidates=[];
 let itemPhotoFile=null,itemPhotoCleared=false,itemPhotoPreviewUrl=null;
-let cropCandidateIndex=-1,cropRect={x:.2,y:.2,w:.6,h:.5},cropAnchor=null;
+let cropCandidateIndex=-1,cropRect={x:.2,y:.2,w:.6,h:.5},cropAnchor=null,ocrProcessedImage=null;
 const url=new URL(location.href);
 function say(s){$("status").textContent=s;setTimeout(()=>{if($("status").textContent===s)$("status").textContent=""},8500)}
 function path(s=""){return "rooms/"+room+(s?"/"+s:"")}
@@ -423,6 +423,59 @@ function renderCandidates(){
  }
  $("commitCandidates").textContent="확인한 메뉴 "+extractedCandidates.length+"개 등록하기";
 }
+function clamp(v,a,b){return Math.min(b,Math.max(a,v))}
+function showCropRect(){
+ const box=$("cropRect");
+ box.style.left=(cropRect.x*100)+"%";box.style.top=(cropRect.y*100)+"%";
+ box.style.width=(cropRect.w*100)+"%";box.style.height=(cropRect.h*100)+"%";
+}
+function openCrop(index){
+ if(!isHost()||!selectedMenuImage||!previewObjectUrl)throw Error("원본 메뉴판 사진을 다시 선택해주세요.");
+ const c=extractedCandidates[index];if(!c)return;
+ cropCandidateIndex=index;
+ cropRect=c.cropRect||{x:.2,y:.15,w:.6,h:.5};
+ $("cropTitle").textContent=c.name+" · 음식 사진 영역 지정";
+ $("cropSource").src=previewObjectUrl;
+ $("cropModal").hidden=false;
+ showCropRect();
+}
+function closeCropModal(){
+ $("cropModal").hidden=true;cropAnchor=null;cropCandidateIndex=-1;
+}
+$("closeCrop").onclick=closeCropModal;
+$("cropStage").addEventListener("pointerdown",e=>{
+ if(cropCandidateIndex<0)return;
+ e.preventDefault();$("cropStage").setPointerCapture(e.pointerId);
+ const box=$("cropStage").getBoundingClientRect();
+ cropAnchor={x:clamp((e.clientX-box.left)/box.width,0,1),y:clamp((e.clientY-box.top)/box.height,0,1)};
+});
+$("cropStage").addEventListener("pointermove",e=>{
+ if(!cropAnchor)return;
+ const box=$("cropStage").getBoundingClientRect();
+ const x=clamp((e.clientX-box.left)/box.width,0,1),y=clamp((e.clientY-box.top)/box.height,0,1);
+ cropRect={x:Math.min(cropAnchor.x,x),y:Math.min(cropAnchor.y,y),w:Math.abs(x-cropAnchor.x),h:Math.abs(y-cropAnchor.y)};
+ showCropRect();
+});
+$("cropStage").addEventListener("pointerup",()=>{cropAnchor=null});
+$("cropStage").addEventListener("pointercancel",()=>{cropAnchor=null});
+$("cropApply").onclick=()=>act(async()=>{
+ if(cropCandidateIndex<0||!selectedMenuImage)throw Error("메뉴판 사진을 먼저 선택해주세요.");
+ if(cropRect.w<.035||cropRect.h<.035)throw Error("사진 영역을 손가락으로 조금 더 크게 드래그해주세요.");
+ $("cropApply").disabled=true;
+ try{
+  const candidate=extractedCandidates[cropCandidateIndex];
+  candidate.imageData=await imageToThumbnail(ocrProcessedImage||selectedMenuImage,cropRect);
+  candidate.cropRect={...cropRect};candidate.photoOrigin="manual";
+  closeCropModal();renderCandidates();
+ }finally{$("cropApply").disabled=false}
+});
+$("cropRemove").onclick=()=>{
+ if(cropCandidateIndex>=0&&extractedCandidates[cropCandidateIndex]){
+  extractedCandidates[cropCandidateIndex].imageData="";
+  extractedCandidates[cropCandidateIndex].photoOrigin="";
+ }
+ closeCropModal();renderCandidates();
+};
 function showExtracted(text,label){
  const result=extractFromText(text);
  extractedCandidates=result.found;
