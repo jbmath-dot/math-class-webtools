@@ -634,12 +634,55 @@ $("cropRemove").onclick=()=>{
 function normalizeOCRText(x){return String(x||"").toLowerCase().replace(/[^가-힣a-z0-9]/g,"")}
 function ocrLines(blocks,width,height){
  const result=[];
+ if(!width||!height)return result;
  for(const block of blocks||[])for(const para of block.paragraphs||[])for(const line of para.lines||[]){
-  const box=line.bbox,name=normalizeOCRText(line.text||line.words?.map(w=>w.text).join(" ")||"");
-  if(!box||!name)continue;
-  result.push({name,box:{x0:box.x0/width,y0:box.y0/height,x1:box.x1/width,y1:box.y1/height}});
+  const box=line.bbox,text=String(line.text||line.words?.map(w=>w.text).join(" ")||"").trim();
+  if(!box||!text)continue;
+  const bounds={x0:clamp(box.x0/width,0,1),y0:clamp(box.y0/height,0,1),x1:clamp(box.x1/width,0,1),y1:clamp(box.y1/height,0,1)};
+  if(bounds.x1<=bounds.x0||bounds.y1<=bounds.y0)continue;
+  result.push({text,name:normalizeOCRText(text),box:bounds});
  }
  return result;
+}
+function extractFromLayout(blocks,width,height){
+ const lines=ocrLines(blocks,width,height),found=[],used=new Set();
+ for(let i=0;i<lines.length;i++){
+  const entry=menuLineEntry(lines[i].text);
+  if(!entry)continue;
+  found.push({id:uidStr(),...entry,textBox:lines[i].box,source:"position"});
+ }
+ // 값만 적힌 가격이 별도 위치에 있어도 가까운 메뉴명을 연결합니다.
+ for(let i=0;i<lines.length;i++){
+  const priceLine=lines[i],m=priceLine.text.match(PRICE_ONLY);
+  if(!m)continue;
+  const price=parsePrice(m[1]);if(price===null)continue;
+  const candidates=[];
+  for(let j=0;j<lines.length;j++){
+   if(j===i||used.has(j))continue;
+   const item=lines[j],label=cleanMenuLabel(item.text);
+   if(!isMenuLabel(label)||menuLineEntry(item.text)||PRICE_ONLY.test(item.text))continue;
+   const yCenter=(item.box.y0+item.box.y1)/2,pY=(priceLine.box.y0+priceLine.box.y1)/2;
+   const vertical=Math.abs(yCenter-pY);
+   const horizontal=Math.max(0,priceLine.box.x0-item.box.x1);
+   const ahead=priceLine.box.y0-item.box.y1;
+   const sameRow=vertical<.035&&item.box.x1<=priceLine.box.x0+.03&&horizontal<.54;
+   const aboveRow=ahead>=-.009&&ahead<.11&&Math.abs(item.box.x0-priceLine.box.x0)<.28;
+   if(!sameRow&&!aboveRow)continue;
+   const score=sameRow?vertical*3+horizontal*.12:(ahead+.02)*1.8+Math.abs(item.box.x0-priceLine.box.x0)*.15;
+   candidates.push({j,label,score});
+  }
+  candidates.sort((a,b)=>a.score-b.score);
+  if(candidates.length){
+   const chosen=candidates[0];used.add(chosen.j);
+   found.push({id:uidStr(),name:chosen.label,price,textBox:lines[chosen.j].box,source:"position"});
+  }
+ }
+ const seen=new Set();
+ return found.filter(c=>{
+  const key=normalizeOCRText(c.name)+"|"+c.price;
+  if(seen.has(key))return false;
+  seen.add(key);return true;
+ });
 }
 function suggestPhotoAreas(box,W,H){
  const cx=(box.x0+box.x1)/2,cy=(box.y0+box.y1)/2;
@@ -833,6 +876,19 @@ $("scan").onclick=()=>act(async()=>{
   $("ocrLines").value=raw;
   if(!raw)throw Error("사진에서 글자를 인식하지 못했습니다. 더 선명한 JPG/PNG 사진으로 시도하거나 메뉴를 직접 입력하세요.");
   showExtracted(raw,"사진 인식 완료");
+  // 문자 배열의 위치 정보로 이름/가격을 다시 짝지어 설명·다단 메뉴 오인식을 줄입니다.
+  const inputSource=await getImageSource(input);
+  const ocrWidth=inputSource.width||inputSource.naturalWidth;
+  const ocrHeight=inputSource.height||inputSource.naturalHeight;
+  inputSource.close?.();
+  const positioned=extractFromLayout(result?.data?.blocks||[],ocrWidth,ocrHeight);
+  if(positioned.length){
+   const keys=new Set(positioned.map(c=>normalizeOCRText(c.name)+"|"+c.price));
+   const rawExtras=extractedCandidates.filter(c=>!keys.has(normalizeOCRText(c.name)+"|"+c.price));
+   // 사진 속 텍스트가 배치된 위치를 확인할 수 있는 메뉴를 우선합니다.
+   extractedCandidates=[...positioned,...rawExtras];
+   renderCandidates();
+  }
   ocrProcessedImage=input;
   $("extractStatus").textContent="음식 사진 영역을 자동 추천하고 있습니다.";
   const suggested=await autoSuggestPhotos(result?.data?.blocks||[],input);
