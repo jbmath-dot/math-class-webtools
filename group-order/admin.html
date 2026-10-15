@@ -129,15 +129,17 @@
 <h3 id="editorTitle">메뉴 추가하기 · 사진 선택</h3>
 <label for="mName">메뉴명</label><input id="mName" placeholder="메뉴 이름">
 <label for="mPrice">가격(원)</label><input id="mPrice" type="number" min="0" step="1" placeholder="4500">
+<label for="mKind">등록 유형</label><select id="mKind"><option value="menu">일반 메뉴</option><option value="option">추가 옵션 (예: 샷추가)</option></select>
+<div id="menuPhotoControls">
 <label for="menuItemPhoto">개별 음식·음료 사진 (선택)</label><input id="menuItemPhoto" type="file" accept="image/*">
 <label for="menuItemCamera">개별 사진 바로 촬영 (선택)</label><input id="menuItemCamera" type="file" accept="image/*" capture="environment">
 <div id="itemPhotoPreviewWrap" hidden style="padding:10px;border:1px solid #dbe5eb;border-radius:10px;margin:8px 0">
  <img id="itemPhotoPreview" alt="음식·음료 사진 미리보기" style="display:block;width:140px;height:120px;object-fit:cover;border-radius:8px">
  <div class="row" style="margin-top:8px"><span id="itemPhotoStatus" class="note"></span><button id="removeItemPhoto" class="tiny subtle" type="button">사진 제거</button></div>
 </div>
-<p class="note">개별 사진은 선택사항입니다. 등록한 사진이 있으면 사진 아래 메뉴명·금액이 표시되며, 없으면 누르기 쉬운 목록이 나타납니다.</p>
+<p class="note">개별 음식 사진은 선택사항이며 추가 옵션에는 사진이 사용되지 않습니다.</p></div>
 <div class="row" style="margin-top:10px"><button id="saveMenu">메뉴 저장</button><button id="cancelMenu" class="subtle" hidden>수정 취소</button></div>
-<h3>등록된 메뉴</h3><div id="editableMenu"></div>
+<h3>등록된 메뉴</h3><div id="editableMenu"></div><h3>등록된 추가 옵션</h3><div id="editableOptions"></div>
 <hr style="border:0;border-top:1px solid #e9eff2;margin:16px 0">
 <h3>주문방 관리</h3><button id="toggleClosed" class="subtle">주문 마감</button>
 </section>
@@ -207,7 +209,14 @@ function isHost(){return current?.hostUid===uid}
 function my(){return current?.orders?.[uid]||{nick:"",items:[]}}
 function validPhotoData(v){return typeof v==="string"&&v.length<=90000&&/^data:image\/jpeg;base64,[a-z0-9+/=]+$/i.test(v)}
 function allMenuData(){return Array.isArray(current?.menu)?current.menu:[]}
-function menuItems(){return allMenuData().filter(m=>m&&m.kind!=="store")}
+function menuItems(){return allMenuData().filter(m=>m&&m.kind!=="store"&&m.kind!=="option")}
+function optionItems(){return allMenuData().filter(m=>m&&m.kind==="option")}
+function optionsForStore(){return optionItems().filter(m=>(m.storeId||DEFAULT_STORE_ID)===activeStoreId)}
+function orderAddons(x){
+ const stored=Array.isArray(x.selectedOptions)?x.selectedOptions:[];
+ if(stored.length)return stored.map(o=>{const m=optionItems().find(z=>z.id===o.id);return {name:m?.name||o.name||"옵션",price:Number(m?.price??o.price??0)}});
+ return Array.isArray(x.optionIds)?x.optionIds.map(id=>optionItems().find(m=>m.id===id)).filter(Boolean).map(m=>({name:m.name,price:Number(m.price)||0})):[];
+}
 function getStores(){
  const data=allMenuData();
  const listed=data.filter(m=>m?.kind==="store"&&typeof m.id==="string"&&m.name);
@@ -220,7 +229,8 @@ function itemStoreId(x){
 }
 function itemInfo(x){
  const found=menuItems().find(m=>m.id===x.menuId);
- return {name:found?.name||x.name||"삭제된 메뉴",price:Number(found?.price??x.price??0),qty:Number(x.qty||1),option:x.option||"",storeId:itemStoreId(x)};
+ const addonList=orderAddons(x);
+ return {name:found?.name||x.name||"삭제된 메뉴",price:Number(found?.price??x.price??0)+addonList.reduce((a,o)=>a+o.price,0),basePrice:Number(found?.price??x.price??0),qty:Number(x.qty||1),option:[...addonList.map(o=>o.name),x.option||""].filter(Boolean).join(" · "),storeId:itemStoreId(x)};
 }
 function link(){let u=new URL("./index.html",location.href);u.search="?r="+encodeURIComponent(room)+"&cfg="+encodeURIComponent(encode(config));u.hash="";return u.href}
 function adminLink(){let u=new URL("./admin.html",location.href);u.search="?r="+encodeURIComponent(room)+"&cfg="+encodeURIComponent(encode(config));u.hash="";return u.href}
@@ -568,12 +578,13 @@ function renderCandidates(){
  wrap.hidden=!extractedCandidates.length;area.replaceChildren();
  for(const [i,c] of extractedCandidates.entries()){
   const entry=document.createElement("div");entry.className="candidate";
-  entry.innerHTML='<div class="candidate-fields"><div><label for="candidateName'+i+'">메뉴 이름</label><input id="candidateName'+i+'" class="candidate-name" maxlength="100"></div><div><label for="candidatePrice'+i+'">가격(원)</label><input id="candidatePrice'+i+'" class="candidate-price" inputmode="numeric" type="number" min="0" step="1"></div><button type="button" class="subtle tiny candidate-remove" data-index="'+i+'">제외</button></div>'+
-  '<div class="candidate-photo-row">'+(validPhotoData(c.imageData)?'<img class="candidate-photo" src="'+c.imageData+'" alt="'+esc(c.name)+' 추천 사진">':'<div class="candidate-photo" style="display:flex;align-items:center;justify-content:center;font-size:.7rem;text-align:center;color:#526977">사진 없음</div>')+
-  '<div><div class="row"><button type="button" class="tiny subtle candidate-crop" data-index="'+i+'">메뉴판에서 사진 자르기</button>'+
+  entry.innerHTML='<div class="candidate-fields"><div><label for="candidateName'+i+'">메뉴 이름</label><input id="candidateName'+i+'" class="candidate-name" maxlength="100"></div><div><label for="candidatePrice'+i+'">가격(원)</label><input id="candidatePrice'+i+'" class="candidate-price" inputmode="numeric" type="number" min="0" step="1"></div><button type="button" class="subtle tiny candidate-remove" data-index="'+i+'">제외</button></div><label for="candidateKind'+i+'">분류</label><select id="candidateKind'+i+'" class="candidate-kind"><option value="menu">일반 메뉴</option><option value="option">추가 옵션</option></select>'+
+  '<div class="candidate-photo-row">'+(c.kind==="option"?'':validPhotoData(c.imageData)?'<img class="candidate-photo" src="'+c.imageData+'" alt="'+esc(c.name)+' 추천 사진">':'<div class="candidate-photo" style="display:flex;align-items:center;justify-content:center;font-size:.7rem;text-align:center;color:#526977">사진 없음</div>')+
+  '<div><div class="row">'+(c.kind==="option"?'':'<button type="button" class="tiny subtle candidate-crop" data-index="'+i+'">메뉴판에서 사진 자르기</button>')+
   (validPhotoData(c.imageData)?'<button type="button" class="tiny subtle candidate-no-photo" data-index="'+i+'">사진 제거</button>':'')+'</div><p class="candidate-help">'+(c.photoOrigin==="auto"?'자동 추천 사진(검토 필요) · 다른 메뉴의 사진이 아닌지 확인하세요.':(validPhotoData(c.imageData)?'직접 지정한 메뉴 사진':'사진이 없으면 목록으로 표시됩니다.'))+'</p></div></div>';
   entry.querySelector(".candidate-name").value=c.name;
   entry.querySelector(".candidate-price").value=c.price;
+  entry.querySelector(".candidate-kind").value=c.kind==="option"?"option":"menu";
   area.append(entry);
  }
  $("commitCandidates").textContent="확인한 메뉴 "+extractedCandidates.length+"개 등록하기";
@@ -731,6 +742,7 @@ async function autoSuggestPhotos(blocks,input){
   const occupied=[],usedLabels=new Set();
   let count=0;
   for(const candidate of extractedCandidates){
+   if(candidate.kind==="option")continue;
    const name=normalizeOCRText(candidate.name);
    if(name.length<2)continue;
    let box=candidate.textBox;
@@ -805,6 +817,7 @@ $("menuCandidates").oninput=e=>{
  if(i<0||!extractedCandidates[i])return;
  if(e.target.classList.contains("candidate-name"))extractedCandidates[i].name=e.target.value;
  if(e.target.classList.contains("candidate-price"))extractedCandidates[i].price=e.target.value;
+ if(e.target.classList.contains("candidate-kind")){extractedCandidates[i].kind=e.target.value;if(e.target.value==="option"){extractedCandidates[i].imageData="";extractedCandidates[i].photoOrigin="";renderCandidates();}}
 };
 $("clearCandidates").onclick=()=>{
  extractedCandidates=[];renderCandidates();
@@ -813,12 +826,12 @@ $("clearCandidates").onclick=()=>{
 $("commitCandidates").onclick=()=>act(async()=>{
  if(!isHost())throw Error("방장만 메뉴를 등록할 수 있습니다.");
  const existing=allMenuData().map(m=>({...m}));
- const newItems=[],byKey=new Map(existing.map((m,i)=>[m.kind==="store"?null:(m.storeId||DEFAULT_STORE_ID)+"|"+m.name.trim().toLowerCase()+"|"+m.price,i]).filter(([key])=>key!==null));
+ const newItems=[],byKey=new Map(existing.map((m,i)=>[m.kind==="store"?null:(m.storeId||DEFAULT_STORE_ID)+"|"+(m.kind==="option"?"option":"menu")+"|"+m.name.trim().toLowerCase()+"|"+m.price,i]).filter(([key])=>key!==null));
  let duplicated=0,photosUpdated=0;
  for(const c of extractedCandidates){
-  const name=normalizeMenuName(c.name),raw=String(c.price).trim(),price=Number(raw);
+  const name=normalizeMenuName(c.name),raw=String(c.price).trim(),price=Number(raw),kind=c.kind==="option"?"option":"menu";
   if(!name||!raw||!Number.isSafeInteger(price)||price<0||price>10000000)throw Error("메뉴 이름과 가격을 확인해주세요. 가격은 0~1,000만 원 사이의 숫자만 입력할 수 있습니다.");
-  const key=activeStoreId+"|"+name.toLowerCase()+"|"+price,imageData=validPhotoData(c.imageData)?c.imageData:"";
+  const key=activeStoreId+"|"+kind+"|"+name.toLowerCase()+"|"+price,imageData=kind==="menu"&&validPhotoData(c.imageData)?c.imageData:"";
   if(byKey.has(key)){
    const i=byKey.get(key);
    // 같은 메뉴가 이미 있으면 중복 생성하지 않고, 사진이 없는 기존 메뉴에 새 사진만 연결합니다.
@@ -827,7 +840,7 @@ $("commitCandidates").onclick=()=>act(async()=>{
    }else duplicated++;
    continue;
   }
-  const item={id:uidStr(),name,price,imageData,storeId:activeStoreId};
+  const item={id:uidStr(),name,price,imageData,storeId:activeStoreId,...(kind==="option"?{kind:"option"}:{})};
   newItems.push(item);byKey.set(key,-1);
  }
  if(!newItems.length&&!photosUpdated)throw Error("새로 추가할 메뉴나 연결할 사진이 없습니다. 메뉴·사진을 확인해주세요.");
