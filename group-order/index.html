@@ -162,11 +162,14 @@ function parseFirebaseConfig(raw){
 }
 let db,auth,uid,room="",config,current=null,editing="",joined=false,choosing=true;
 let selectedMenuImage=null, previewObjectUrl=null, extractedCandidates=[];
+let itemPhotoFile=null,itemPhotoCleared=false,itemPhotoPreviewUrl=null;
+let cropCandidateIndex=-1,cropRect={x:.2,y:.2,w:.6,h:.5},cropAnchor=null;
 const url=new URL(location.href);
 function say(s){$("status").textContent=s;setTimeout(()=>{if($("status").textContent===s)$("status").textContent=""},8500)}
 function path(s=""){return "rooms/"+room+(s?"/"+s:"")}
 function isHost(){return current?.hostUid===uid}
 function my(){return current?.orders?.[uid]||{nick:"",items:[]}}
+function validPhotoData(v){return typeof v==="string"&&v.length<=90000&&/^data:image\/jpeg;base64,[a-z0-9+/=]+$/i.test(v)}
 function itemInfo(x){const found=(current?.menu||[]).find(m=>m.id===x.menuId);return {name:found?.name||x.name||"삭제된 메뉴",price:Number(found?.price??x.price??0),qty:Number(x.qty||1),option:x.option||""}}
 function link(){let u=new URL(location.href);u.search="?r="+encodeURIComponent(room)+"&cfg="+encodeURIComponent(encode(config));u.hash="";return u.href}
 async function connect(c,r,create=false){
@@ -196,10 +199,18 @@ function render(){
  const selected=$("menuSelect").value,menu=current.menu||[];
  $("menuSelect").innerHTML='<option value="">메뉴를 골라주세요</option>'+menu.map(m=>'<option value="'+esc(m.id)+'">'+esc(m.name)+' · '+money(m.price)+'</option>').join("");
  if(menu.some(x=>x.id===selected))$("menuSelect").value=selected;
- $("menuChoices").innerHTML=menu.length?menu.map(m=>{
- const picked=m.id===$("menuSelect").value;
- return '<button type="button" class="choice '+(picked?'is-selected':'')+'" data-menu-id="'+esc(m.id)+'" aria-pressed="'+(picked?'true':'false')+'" '+(closed?'disabled':'')+'><strong>'+esc(m.name)+'</strong><small>'+money(m.price)+'</small></button>'
- }).join(""):'<p class="muted">방장이 메뉴를 등록하면 이곳에 바로 나타납니다.</p>';
+ const photoMenu=menu.filter(m=>validPhotoData(m.imageData));
+ const textMenu=menu.filter(m=>!validPhotoData(m.imageData));
+ const attrs=m=>'data-menu-id="'+esc(m.id)+'" aria-pressed="'+(m.id===$("menuSelect").value?'true':'false')+'" '+(closed?'disabled':'');
+ const cls=m=>(m.id===$("menuSelect").value?' is-selected':'');
+ $("menuChoices").innerHTML=menu.length?
+ (photoMenu.length?'<div class="photo-choices">'+photoMenu.map(m=>
+  '<button type="button" class="choice photo-choice'+cls(m)+'" '+attrs(m)+'><img loading="lazy" src="'+m.imageData+'" alt="'+esc(m.name)+' 음식 사진"><span class="choice-info"><strong>'+esc(m.name)+'</strong><small>'+money(m.price)+'</small></span></button>'
+ ).join("")+'</div>':'')+
+ (textMenu.length?'<div class="text-choices">'+textMenu.map(m=>
+  '<button type="button" class="choice text-choice'+cls(m)+'" '+attrs(m)+'><strong>'+esc(m.name)+'</strong><small>'+money(m.price)+'</small></button>'
+ ).join("")+'</div>':'')
+ :'<p class="muted">방장이 메뉴를 등록하면 이곳에 바로 나타납니다.</p>';
  const orders=Object.entries(current.orders||{}).filter(([_,o])=>Array.isArray(o.items)&&o.items.length);
  $("participantCount").textContent=orders.length+"명 주문 참여";
  $("totalPeople").textContent=orders.length+"명";
@@ -225,7 +236,7 @@ function render(){
  +(!closed?'<button class="subtle" id="reselectOrder" type="button">다시 선택하기</button>':'')
  +'</div>':
  (closed?'<p class="muted">주문이 마감되었습니다.</p>':'');
- $("editableMenu").innerHTML=host?menu.map(m=>'<div class="item between"><span>'+esc(m.name)+'<br><small>'+money(m.price)+'</small></span><div class="row"><button class="tiny subtle" data-action="editMenu" data-id="'+esc(m.id)+'">수정</button><button class="tiny danger" data-action="deleteMenu" data-id="'+esc(m.id)+'">삭제</button></div></div>').join("")||'<p class="muted">메뉴가 없습니다.</p>':"";
+ $("editableMenu").innerHTML=host?menu.map(m=>'<div class="item between"><div class="row">'+(validPhotoData(m.imageData)?'<img class="menu-edit-thumb" alt="" src="'+m.imageData+'">':'')+'<span>'+esc(m.name)+'<br><small>'+money(m.price)+(validPhotoData(m.imageData)?' · 사진 등록됨':' · 사진 없음')+'</small></span></div><div class="row"><button class="tiny subtle" data-action="editMenu" data-id="'+esc(m.id)+'">수정</button><button class="tiny danger" data-action="deleteMenu" data-id="'+esc(m.id)+'">삭제</button></div></div>').join("")||'<p class="muted">메뉴가 없습니다.</p>':"";
 }
 async function updateOrder(items,nick){if(!current||current.closed)throw Error("주문이 마감되었습니다.");nick=(nick??$("nick").value).trim();if(!nick)throw Error("이름 또는 닉네임을 입력하세요.");await set(ref(db,path("orders/"+uid)),{nick,items,updatedAt:Date.now()});}
 async function saveMenu(menu){if(!isHost())throw Error("방장만 메뉴를 수정할 수 있습니다.");await set(ref(db,path("menu")),menu);}
@@ -263,18 +274,94 @@ $("myItems").onclick=e=>{
  choosing=true;$("menuSelect").value="";$("qty").value="1";$("option").value="";
  render();$("orderCard").scrollIntoView({behavior:"smooth",block:"start"});
 };
+function previewItemPhoto(src,caption=""){
+ $("itemPhotoPreviewWrap").hidden=!src;
+ $("itemPhotoPreview").src=src||"";
+ $("itemPhotoStatus").textContent=caption;
+}
+function resetItemPhoto(){
+ if(itemPhotoPreviewUrl)URL.revokeObjectURL(itemPhotoPreviewUrl);
+ itemPhotoPreviewUrl=null;itemPhotoFile=null;itemPhotoCleared=false;
+ $("menuItemPhoto").value="";$("menuItemCamera").value="";previewItemPhoto("");
+}
+function resetMenuEditor(){
+ editing="";$("mName").value="";$("mPrice").value="";
+ $("editorTitle").textContent="메뉴 추가하기 · 사진 선택";
+ $("cancelMenu").hidden=true;resetItemPhoto();
+}
+function selectItemFile(file){
+ if(!file)return;
+ if(!file.type.startsWith("image/")&&!/\.(?:jpe?g|png|webp|heic|heif)$/i.test(file.name))return say("이미지 파일만 등록할 수 있습니다.");
+ if(file.size>20*1024*1024)return say("사진 용량은 20MB 이하여야 합니다.");
+ if(itemPhotoPreviewUrl)URL.revokeObjectURL(itemPhotoPreviewUrl);
+ itemPhotoPreviewUrl=URL.createObjectURL(file);
+ itemPhotoFile=file;itemPhotoCleared=false;
+ previewItemPhoto(itemPhotoPreviewUrl,"사진을 저장하면 모든 참여자에게 보입니다.");
+}
+$("menuItemPhoto").onchange=e=>selectItemFile(e.target.files?.[0]);
+$("menuItemCamera").onchange=e=>selectItemFile(e.target.files?.[0]);
+$("removeItemPhoto").onclick=()=>{
+ resetItemPhoto();itemPhotoCleared=true;
+ say("메뉴 사진을 제거하도록 설정했습니다. 저장하면 적용됩니다.");
+};
+async function getImageSource(file){
+ try{return await createImageBitmap(file)}catch{
+  const url=URL.createObjectURL(file),img=new Image();
+  try{
+   img.src=url;await img.decode();return img;
+  }catch{throw Error("사진 형식을 읽지 못했습니다. 갤러리에서 JPG 또는 PNG 사진을 선택해주세요.")}
+  finally{URL.revokeObjectURL(url)}
+ }
+}
+async function imageToThumbnail(file,rect){
+ const src=await getImageSource(file);
+ try{
+  const W=src.width||src.naturalWidth,H=src.height||src.naturalHeight;
+  const r=rect||{x:0,y:0,w:1,h:1};
+  const x=Math.max(0,Math.min(W-1,Math.floor(r.x*W))),y=Math.max(0,Math.min(H-1,Math.floor(r.y*H)));
+  const w=Math.max(1,Math.min(W-x,Math.floor(r.w*W))),h=Math.max(1,Math.min(H-y,Math.floor(r.h*H)));
+  let side=400,quality=.7,result="";
+  for(let i=0;i<8;i++){
+   const k=Math.min(1,side/Math.max(w,h));
+   const c=document.createElement("canvas");
+   c.width=Math.max(1,Math.round(w*k));c.height=Math.max(1,Math.round(h*k));
+   const ctx=c.getContext("2d");
+   if(!ctx)throw Error("이 기기에서 이미지 처리를 지원하지 않습니다.");
+   ctx.fillStyle="#fff";ctx.fillRect(0,0,c.width,c.height);
+   ctx.drawImage(src,x,y,w,h,0,0,c.width,c.height);
+   result=c.toDataURL("image/jpeg",quality);
+   c.width=0;c.height=0;
+   if(result.length<=75000)return result;
+   side=Math.max(160,Math.floor(side*.82));quality=Math.max(.4,quality-.08);
+  }
+  throw Error("사진 압축에 실패했습니다. 더 작은 사진으로 시도해주세요.");
+ }finally{src.close?.()}
+}
 $("saveMenu").onclick=()=>act(async()=>{
- const name=$("mName").value.trim(),price=Number($("mPrice").value);
- if(!name||!Number.isInteger(price)||price<0)throw Error("메뉴명과 0원 이상의 가격을 입력하세요.");
- let a=[...(current.menu||[])];
- if(editing)a=a.map(m=>m.id===editing?{...m,name,price}:m);
- else a.push({id:uidStr(),name,price});
- await saveMenu(a);editing="";$("mName").value="";$("mPrice").value="";$("editorTitle").textContent="메뉴 추가하기";$("cancelMenu").hidden=true;say("메뉴를 반영했습니다.");
+ const name=$("mName").value.trim(),raw=$("mPrice").value.trim(),price=Number(raw);
+ if(!name||!raw||!Number.isSafeInteger(price)||price<0)throw Error("메뉴 이름과 올바른 가격을 입력해주세요.");
+ $("saveMenu").disabled=true;
+ try{
+  let a=[...(current.menu||[])],photo="";
+  if(editing){const old=a.find(m=>m.id===editing);if(!old)throw Error("수정할 메뉴를 찾지 못했습니다.");photo=validPhotoData(old.imageData)?old.imageData:"";}
+  if(itemPhotoCleared)photo="";
+  if(itemPhotoFile)photo=await imageToThumbnail(itemPhotoFile);
+  if(editing)a=a.map(m=>m.id===editing?{...m,name,price,imageData:photo}:m);
+  else a.push({id:uidStr(),name,price,imageData:photo});
+  await saveMenu(a);
+  resetMenuEditor();say("메뉴와 사진이 저장되었습니다.");
+ }finally{$("saveMenu").disabled=false}
 });
-$("cancelMenu").onclick=()=>{editing="";$("mName").value="";$("mPrice").value="";$("editorTitle").textContent="메뉴 추가하기";$("cancelMenu").hidden=true};
+$("cancelMenu").onclick=resetMenuEditor;
 $("editableMenu").onclick=e=>act(async()=>{
  const b=e.target.closest("button[data-action]");if(!b)return;const m=(current.menu||[]).find(x=>x.id===b.dataset.id);if(!m)return;
- if(b.dataset.action==="editMenu"){editing=m.id;$("mName").value=m.name;$("mPrice").value=m.price;$("editorTitle").textContent="메뉴 수정하기";$("cancelMenu").hidden=false;$("mName").focus();}
+ if(b.dataset.action==="editMenu"){
+ resetMenuEditor();editing=m.id;$("mName").value=m.name;$("mPrice").value=m.price;
+ $("editorTitle").textContent="메뉴 수정하기 · 음식 사진";
+ $("cancelMenu").hidden=false;
+ if(validPhotoData(m.imageData))previewItemPhoto(m.imageData,"현재 저장된 사진");
+ $("mName").focus();
+}
  if(b.dataset.action==="deleteMenu"){if(!confirm("이 메뉴를 삭제할까요? 기존 주문 내역은 그대로 유지됩니다."))return;await saveMenu((current.menu||[]).filter(x=>x.id!==m.id));}
 });
 $("toggleClosed").onclick=()=>act(async()=>{if(!isHost())return;await set(ref(db,path("closed")),!current.closed);say(current.closed?"주문을 다시 열었습니다.":"주문을 마감했습니다.")});
