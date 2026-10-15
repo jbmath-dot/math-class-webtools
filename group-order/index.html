@@ -23,6 +23,15 @@
 #summaryCard{min-height:170px}
 #hostTools{border-color:#bad8e8}
 #roomInfo{margin-bottom:12px}
+.store-bar{margin-bottom:13px}
+.store-tabs{display:flex;gap:8px;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:thin;padding-bottom:5px}
+.store-tab{white-space:nowrap;flex:0 0 auto;min-width:95px;background:#e7f0f5;color:#244f67;border:2px solid transparent;padding:11px 13px;border-radius:11px}
+.store-tab[aria-selected="true"]{background:#185f84;color:#fff;border-color:#103c56}
+.store-tab .tab-count{font-size:.74rem;font-weight:500;opacity:.82;display:block;margin-top:3px}
+.store-manager{border:1px solid #cbdfea;background:#f5fafd;border-radius:12px;padding:13px;margin:0 0 17px}
+.store-manager h3{margin-top:0}
+@media(max-width:400px){.store-manager .row button{font-size:.82rem;padding:9px}}
+
 .photo-choices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:10px 0 16px}
 .photo-choice{padding:0;min-height:0;overflow:hidden;gap:0;background:#fff;align-items:stretch}
 .photo-choice img{display:block;aspect-ratio:4/3;width:100%;object-fit:cover;background:#edf3f5}
@@ -60,11 +69,27 @@
 <div class="card" id="shareBox" hidden><div class="between"><h2>주문방 <span id="roomName"></span></h2><span id="roomState" class="pill"></span></div>
 <div class="row"><button id="share">참여 링크 공유</button><button id="copy" class="subtle">링크 복사</button><span id="participantCount" class="muted"></span></div>
 <div id="qr"></div><small>링크 또는 QR을 선생님들께 보내세요. 설치나 회원가입 없이 이름을 입력하고 주문할 수 있습니다.</small></div>
+<nav class="card store-bar" aria-label="매장별 주문 탭">
+  <div class="between" style="margin-bottom:8px"><strong>매장별 주문</strong><span class="note">매장을 선택하면 해당 메뉴와 주문이 표시됩니다.</span></div>
+  <div id="storeTabs" class="store-tabs" role="tablist" aria-label="주문할 매장"></div>
+</nav>
 <div class="grid">
 <div>
 <section class="card" id="hostTools" hidden>
-<h2>방장: 메뉴 관리</h2><p class="note">사진에서 메뉴·가격을 추출한 뒤 잘못 인식된 내용은 고칠 수 있습니다. 메뉴 이름이나 가격을 바꾸면 기존 주문의 합계에도 반영됩니다.</p>
-<h3>한 장의 메뉴판에서 메뉴 추출하기</h3>
+<h2>방장: 메뉴 관리</h2>
+<div class="store-manager">
+ <h3>매장 탭 설정</h3>
+ <label for="storeName">현재 탭의 매장 이름</label>
+ <input id="storeName" maxlength="35" placeholder="예: 카페 봄, 한식당">
+ <div class="row" style="margin-top:9px">
+  <button id="renameStore" type="button">매장 이름 저장</button>
+  <button id="addStore" class="subtle" type="button">새 매장 탭 추가</button>
+  <button id="deleteStore" class="danger" type="button">현재 탭 삭제</button>
+ </div>
+ <p class="note">메뉴와 주문은 매장 탭별로 구분됩니다. 메뉴나 주문이 있는 매장은 삭제할 수 없습니다.</p>
+</div>
+<p class="note">사진에서 메뉴·가격을 추출한 뒤 잘못 인식된 내용은 고칠 수 있습니다. 메뉴 이름이나 가격을 바꾸면 기존 주문의 합계에도 반영됩니다.</p>
+<h3><span id="hostStoreTitle">현재 매장</span> · 메뉴판에서 추출하기</h3>
 <p class="note">이미 찍어둔 메뉴판은 휴대전화 사진 앱·갤러리에서 선택하세요. 현장에서 바로 촬영할 수도 있습니다.</p>
 <label for="photo">사진 앱 · 갤러리에서 선택</label><input id="photo" type="file" accept="image/*">
 <label for="cameraPhoto">카메라로 새로 촬영</label><input id="cameraPhoto" type="file" accept="image/*" capture="environment">
@@ -109,7 +134,7 @@
 <h3>주문방 관리</h3><button id="toggleClosed" class="subtle">주문 마감</button>
 </section>
 <section class="card" id="orderCard">
-<div class="between"><h2 style="margin:0">내 메뉴 선택</h2><span id="participantRoomState" class="pill">접속 중</span></div>
+<div class="between"><h2 style="margin:0"><span id="orderStoreTitle">현재 매장</span> · 메뉴 선택</h2><span id="participantRoomState" class="pill">접속 중</span></div>
 <p class="note">닉네임을 입력하고 원하는 메뉴를 선택하세요. 주문 후에도 다시 선택할 수 있습니다.</p>
 <label for="nick">이름 또는 닉네임</label><div class="row"><input id="nick" maxlength="30" placeholder="예: 김선생 / 햇살" autocomplete="nickname"><button id="saveNick" class="subtle tiny" type="button">이름 저장</button></div>
 <div id="newOrder">
@@ -124,7 +149,7 @@
 </section>
 </div>
 <div>
-<section class="card" id="summaryCard"><h2>전체 선택 현황 · 실시간</h2><div class="row"><span id="totalPeople" class="pill"></span><span id="totalItems" class="pill"></span></div><p class="summary" id="grandTotal">0원</p><h3>메뉴별 합계</h3><div id="byMenu"></div><h3>주문자별 내역</h3><div id="byPerson"></div></section>
+<section class="card" id="summaryCard"><h2><span id="summaryStoreTitle">현재 매장</span> · 전체 선택 현황</h2><div class="row"><span id="totalPeople" class="pill"></span><span id="totalItems" class="pill"></span></div><p class="summary" id="grandTotal">0원</p><p class="note" id="allStoreTotals">전체 매장 합계 0원</p><h3>메뉴별 합계</h3><div id="byMenu"></div><h3>주문자별 내역</h3><div id="byPerson"></div></section>
 
 </div>
 </div>
