@@ -23,6 +23,24 @@
 #summaryCard{min-height:170px}
 #hostTools{border-color:#bad8e8}
 #roomInfo{margin-bottom:12px}
+.photo-choices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:10px 0 16px}
+.photo-choice{padding:0;min-height:0;overflow:hidden;gap:0;background:#fff;align-items:stretch}
+.photo-choice img{display:block;aspect-ratio:4/3;width:100%;object-fit:cover;background:#edf3f5}
+.photo-choice .choice-info{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:10px;width:100%}
+.photo-choice.is-selected::after{padding:0 10px 9px}
+.text-choices{display:flex;flex-direction:column;gap:7px;margin:9px 0 16px}
+.text-choices .choice{min-height:0;display:flex;flex-direction:row;align-items:center;justify-content:space-between;padding:13px;gap:8px}
+.text-choices .choice strong{flex:1}
+.menu-edit-thumb{width:44px;height:44px;border-radius:8px;object-fit:cover;border:1px solid #dce7ec}
+.candidate-photo{width:74px;height:64px;object-fit:cover;border-radius:7px;border:1px solid #dce7ec;background:#edf3f5}
+.candidate-photo-row{display:flex;gap:9px;align-items:center;margin:9px 0}
+.crop-modal{position:fixed;inset:0;background:#061929d9;z-index:200;display:flex;align-items:center;justify-content:center;padding:10px}
+.crop-modal[hidden]{display:none}
+.crop-panel{width:min(680px,100%);max-height:95vh;overflow:auto;margin:0}
+.crop-stage{position:relative;width:100%;touch-action:none;user-select:none}
+.crop-stage img{display:block;width:100%;height:auto;max-height:65vh;object-fit:contain;pointer-events:none}
+.crop-rect{position:absolute;border:3px solid #f9bb29;background:#ffda3d35;box-shadow:0 0 0 999px #0003;pointer-events:none}
+
 @media(max-width:420px){.choices{gap:7px}.choice{padding:10px;min-height:66px}}
 </style>
 </head>
@@ -45,8 +63,8 @@
 <div class="grid">
 <div>
 <section class="card" id="hostTools" hidden>
-<h2>방장: 메뉴판 관리</h2><p class="note">사진에서 메뉴·가격을 추출한 뒤 잘못 인식된 내용은 고칠 수 있습니다. 메뉴 이름이나 가격을 바꾸면 기존 주문의 합계에도 반영됩니다.</p>
-<h3>메뉴판 사진 등록</h3>
+<h2>방장: 메뉴 관리</h2><p class="note">사진에서 메뉴·가격을 추출한 뒤 잘못 인식된 내용은 고칠 수 있습니다. 메뉴 이름이나 가격을 바꾸면 기존 주문의 합계에도 반영됩니다.</p>
+<h3>한 장의 메뉴판에서 메뉴 추출하기</h3>
 <p class="note">이미 찍어둔 메뉴판은 휴대전화 사진 앱·갤러리에서 선택하세요. 현장에서 바로 촬영할 수도 있습니다.</p>
 <label for="photo">사진 앱 · 갤러리에서 선택</label><input id="photo" type="file" accept="image/*">
 <label for="cameraPhoto">카메라로 새로 촬영</label><input id="cameraPhoto" type="file" accept="image/*" capture="environment">
@@ -61,6 +79,7 @@
   <h3 style="margin-top:0">인식된 메뉴 확인 · 수정</h3>
   <p class="note">이름과 가격을 확인하고 잘못 읽힌 항목은 수정하거나 제외하세요. 확인한 메뉴만 등록됩니다.</p>
   <div id="menuCandidates"></div>
+  <p class="note">자동 추천 사진은 배치에 따라 정확하지 않을 수 있습니다. 메뉴명·가격·사진을 확인하고 등록하세요.</p>
   <div class="row" style="margin-top:12px">
     <button id="commitCandidates">확인한 메뉴 등록하기</button>
     <button id="clearCandidates" class="subtle" type="button">후보 초기화</button>
@@ -72,10 +91,18 @@
   <textarea id="ocrLines" style="margin-top:6px" placeholder="아메리카노 | 4500&#10;카페라떼 | 5000"></textarea>
   <button id="importMenu" class="subtle" style="margin-top:7px">텍스트에서 메뉴 추출하기</button>
 </details>
+<p class="note">사진이 포함된 메뉴판을 인식하면 메뉴별 사진 영역을 자동으로 제안합니다. 잘못 잘린 사진은 아래에서 직접 영역을 지정하거나 제외할 수 있습니다.</p>
 <hr style="border:0;border-top:1px solid #e9eff2;margin:17px 0">
-<h3 id="editorTitle">메뉴 추가하기</h3>
+<h3 id="editorTitle">메뉴 추가하기 · 사진 선택</h3>
 <label for="mName">메뉴명</label><input id="mName" placeholder="메뉴 이름">
 <label for="mPrice">가격(원)</label><input id="mPrice" type="number" min="0" step="1" placeholder="4500">
+<label for="menuItemPhoto">개별 음식·음료 사진 (선택)</label><input id="menuItemPhoto" type="file" accept="image/*">
+<label for="menuItemCamera">개별 사진 바로 촬영 (선택)</label><input id="menuItemCamera" type="file" accept="image/*" capture="environment">
+<div id="itemPhotoPreviewWrap" hidden style="padding:10px;border:1px solid #dbe5eb;border-radius:10px;margin:8px 0">
+ <img id="itemPhotoPreview" alt="음식·음료 사진 미리보기" style="display:block;width:140px;height:120px;object-fit:cover;border-radius:8px">
+ <div class="row" style="margin-top:8px"><span id="itemPhotoStatus" class="note"></span><button id="removeItemPhoto" class="tiny subtle" type="button">사진 제거</button></div>
+</div>
+<p class="note">개별 사진은 선택사항입니다. 등록한 사진이 있으면 사진 아래 메뉴명·금액이 표시되며, 없으면 누르기 쉬운 목록이 나타납니다.</p>
 <div class="row" style="margin-top:10px"><button id="saveMenu">메뉴 저장</button><button id="cancelMenu" class="subtle" hidden>수정 취소</button></div>
 <h3>등록된 메뉴</h3><div id="editableMenu"></div>
 <hr style="border:0;border-top:1px solid #e9eff2;margin:16px 0">
@@ -87,7 +114,7 @@
 <label for="nick">이름 또는 닉네임</label><div class="row"><input id="nick" maxlength="30" placeholder="예: 김선생 / 햇살" autocomplete="nickname"><button id="saveNick" class="subtle tiny" type="button">이름 저장</button></div>
 <div id="newOrder">
 <h3>메뉴 선택</h3>
-<div id="menuChoices" class="choices" role="group" aria-label="메뉴 선택"></div>
+<div id="menuChoices" role="group" aria-label="메뉴 선택"></div>
 <select id="menuSelect" class="visually-hidden" aria-label="선택한 메뉴"><option value="">메뉴가 등록되면 표시됩니다</option></select>
 <div class="row"><div style="flex:1"><label for="qty">수량</label><input id="qty" type="number" min="1" max="99" value="1"></div><div style="flex:2"><label for="option">옵션 (선택)</label><input id="option" maxlength="70" placeholder="아이스, 샷 추가 등"></div></div>
 <button id="addOrder" class="primary-action" style="margin-top:14px">이 메뉴로 주문 확정</button>
@@ -102,6 +129,14 @@
 </div>
 </div>
 </section>
+</div>
+<div id="cropModal" class="crop-modal" hidden role="dialog" aria-modal="true" aria-labelledby="cropTitle">
+ <div class="crop-panel card">
+  <div class="between"><h2 id="cropTitle">메뉴 음식 사진 지정</h2><button id="closeCrop" class="subtle tiny" type="button">닫기</button></div>
+  <p class="note">원본 메뉴판에서 해당 음식·음료 부분을 드래그하여 지정하세요. 처음 표시된 사각형은 자동 추천 위치입니다.</p>
+  <div id="cropStage" class="crop-stage"><img id="cropSource" alt="원본 메뉴판 전체" draggable="false"><div id="cropRect" class="crop-rect"></div></div>
+  <div class="row" style="margin-top:9px"><button id="cropApply" type="button">이 사진 사용하기</button><button id="cropRemove" class="subtle" type="button">사진 없이 등록</button></div>
+ </div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script type="module">
