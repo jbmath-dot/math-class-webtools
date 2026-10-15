@@ -410,11 +410,13 @@ function extractFromText(text){
 }
 function renderCandidates(){
  const area=$("menuCandidates"),wrap=$("menuCandidatesWrap");
- wrap.hidden=extractedCandidates.length===0;
- area.replaceChildren();
+ wrap.hidden=!extractedCandidates.length;area.replaceChildren();
  for(const [i,c] of extractedCandidates.entries()){
   const entry=document.createElement("div");entry.className="candidate";
-  entry.innerHTML='<div class="candidate-fields"><div><label for="candidateName'+i+'">메뉴 이름</label><input id="candidateName'+i+'" class="candidate-name" maxlength="100"></div><div><label for="candidatePrice'+i+'">가격(원)</label><input id="candidatePrice'+i+'" class="candidate-price" inputmode="numeric" type="number" min="0" step="1"></div><button type="button" class="subtle tiny candidate-remove" data-index="'+i+'">제외</button></div>';
+  entry.innerHTML='<div class="candidate-fields"><div><label for="candidateName'+i+'">메뉴 이름</label><input id="candidateName'+i+'" class="candidate-name" maxlength="100"></div><div><label for="candidatePrice'+i+'">가격(원)</label><input id="candidatePrice'+i+'" class="candidate-price" inputmode="numeric" type="number" min="0" step="1"></div><button type="button" class="subtle tiny candidate-remove" data-index="'+i+'">제외</button></div>'+
+  '<div class="candidate-photo-row">'+(validPhotoData(c.imageData)?'<img class="candidate-photo" src="'+c.imageData+'" alt="'+esc(c.name)+' 추천 사진">':'<div class="candidate-photo" style="display:flex;align-items:center;justify-content:center;font-size:.7rem;text-align:center;color:#526977">사진 없음</div>')+
+  '<div><div class="row"><button type="button" class="tiny subtle candidate-crop" data-index="'+i+'">메뉴판에서 사진 자르기</button>'+
+  (validPhotoData(c.imageData)?'<button type="button" class="tiny subtle candidate-no-photo" data-index="'+i+'">사진 제거</button>':'')+'</div><p class="candidate-help">'+(c.photoOrigin==="auto"?'메뉴판 배치로 자동 추천한 사진입니다. 맞는지 확인하세요.':(validPhotoData(c.imageData)?'직접 지정한 메뉴 사진':'사진이 없으면 목록으로 표시됩니다.'))+'</p></div></div>';
   entry.querySelector(".candidate-name").value=c.name;
   entry.querySelector(".candidate-price").value=c.price;
   area.append(entry);
@@ -444,10 +446,15 @@ $("importMenu").onclick=()=>act(async()=>{
  showExtracted(text,"텍스트 분석");
  if(extractedCandidates.length)$("menuCandidatesWrap").scrollIntoView({behavior:"smooth",block:"nearest"});
 });
-$("menuCandidates").onclick=e=>{
- const b=e.target.closest("button.candidate-remove");if(!b)return;
- extractedCandidates.splice(Number(b.dataset.index),1);renderCandidates();
-};
+
+$("menuCandidates").onclick=e=>act(async()=>{
+ const b=e.target.closest("button[data-index]");if(!b)return;
+ const i=Number(b.dataset.index);
+ if(!extractedCandidates[i])return;
+ if(b.classList.contains("candidate-remove")){extractedCandidates.splice(i,1);renderCandidates();}
+ else if(b.classList.contains("candidate-no-photo")){extractedCandidates[i].imageData="";extractedCandidates[i].photoOrigin="";renderCandidates();}
+ else if(b.classList.contains("candidate-crop")){openCrop(i);}
+});
 $("menuCandidates").oninput=e=>{
  const entry=e.target.closest(".candidate");
  if(!entry)return;
@@ -470,7 +477,7 @@ $("commitCandidates").onclick=()=>act(async()=>{
   if(!name||!raw||!Number.isSafeInteger(price)||price<0||price>10000000)throw Error("메뉴 이름과 가격을 확인해주세요. 가격은 0~1,000만 원 사이의 숫자만 입력할 수 있습니다.");
   const key=name.toLowerCase()+"|"+price;
   if(seen.has(key)){duplicates++;continue;}
-  seen.add(key);normalized.push({id:uidStr(),name,price});
+  seen.add(key);normalized.push({id:uidStr(),name,price,imageData:validPhotoData(c.imageData)?c.imageData:""});
  }
  if(!normalized.length)throw Error("등록할 새 메뉴가 없습니다. 같은 이름·가격으로 이미 등록된 항목인지 확인해주세요.");
  await saveMenu([...existing,...normalized]);
